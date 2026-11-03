@@ -23,6 +23,7 @@
 
 #include <QtCore>
 #include <QDialog>
+#include <chrono>
 #include "qcustomplot.h"
 
 #define INVALID_MIN 999999
@@ -68,6 +69,9 @@ public:
   explicit LogsDialog(QWidget *parent = 0);
   ~LogsDialog();
 
+protected:
+  bool eventFilter(QObject *watched, QEvent *event) override;
+
 private slots:
   void titleDoubleClicked(QMouseEvent *evt);
   void axisLabelDoubleClick(QCPAxis* axis, QCPAxis::SelectablePart part);
@@ -91,6 +95,13 @@ private:
   QCPLegend *rightLegend;
   bool plotLock;
   QString logFilename;
+
+  // Load timing: from QFile::open() until the log table has been painted.
+  std::chrono::steady_clock::time_point m_loadStart;
+  bool m_loadTimingActive = false;
+  bool m_tableModelReady = false;
+  QString m_timingFile;
+  void writeLoadTiming(double dtMs, const char * status) const;
 
   QVarLengthArray<Qt::GlobalColor> colors;
   QPen pen;

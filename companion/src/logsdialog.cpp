@@ -20,6 +20,12 @@
  */
 
 #include <math.h>
+#include <chrono>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <QEvent>
 #include "logsdialog.h"
 #include "appdata.h"
 #include "ui_logsdialog.h"
@@ -42,6 +48,8 @@ LogsDialog::LogsDialog(QWidget *parent) :
 
   ui->setupUi(this);
   setWindowIcon(CompanionIcon("logs.png"));
+
+  ui->logTable->viewport()->installEventFilter(this);
 
   plotLock=false;
 
@@ -658,8 +666,64 @@ void LogsDialog::fileOpen()
       }
 
       //s1.report("Adjust headers");
+
+      // The model is fully populated; the next paint of the viewport is the
+      // moment the table becomes visible.
+      m_tableModelReady = true;
+      ui->logTable->viewport()->update();
+    }
+    else {
+      m_loadTimingActive = false;
+      m_tableModelReady = false;
     }
   }
+}
+
+bool LogsDialog::eventFilter(QObject *watched, QEvent *event)
+{
+  if (m_loadTimingActive && m_tableModelReady &&
+      watched == ui->logTable->viewport() &&
+      event->type() == QEvent::Paint) {
+
+    const auto t1 = std::chrono::steady_clock::now();
+    const double dtMs =
+        std::chrono::duration<double, std::milli>(t1 - m_loadStart).count();
+
+    writeLoadTiming(dtMs, "ok");
+
+    m_loadTimingActive = false;
+    m_tableModelReady = false;
+  }
+
+  return QDialog::eventFilter(watched, event);
+}
+
+void LogsDialog::writeLoadTiming(double dtMs, const char * status) const
+{
+  std::filesystem::path path;
+#ifdef _WIN32
+  if (const wchar_t *env = _wgetenv(L"CPN_TIMING_LOG"))
+    path = env;
+  else
+#endif
+    path = std::filesystem::temp_directory_path() / "companion_table_timing.txt";
+
+  std::ofstream out(path, std::ios::app);
+  if (!out)
+    return;
+
+  const auto wallMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::system_clock::now().time_since_epoch()).count();
+
+  out << std::fixed << std::setprecision(3)
+      << "utc_ms=" << wallMs
+      << " dt_ms=" << dtMs
+      << " status=" << status
+      << " rows=" << (csvlog.size() > 1 ? csvlog.size() - 1 : 0)
+      << " cols=" << (csvlog.isEmpty() ? 0 : csvlog.first().size())
+      << " file=" << m_timingFile.toUtf8().constData()
+      << '\n';
+  out.flush();
 }
 
 void LogsDialog::saveSession()
@@ -712,10 +776,18 @@ bool LogsDialog::cvsFileParse()
   int errors=0;
   int lines=-1;
 
+  m_timingFile = file.fileName();
+  const auto tOpenStart = std::chrono::steady_clock::now();
+
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) { // reading HEX TEXT file
     return false;
   }
   else {
+    // Include the QFile::open() call itself in the measured interval.
+    m_loadStart = tOpenStart;
+    m_loadTimingActive = true;
+    m_tableModelReady = false;
+
     csvlog.clear();
     logFilename.clear();
     QTextStream inputStream(&file);

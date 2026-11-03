@@ -26,7 +26,9 @@
 #include <fstream>
 #include <iomanip>
 #include <QEvent>
+#include <QItemSelectionModel>
 #include "logsdialog.h"
+#include "logtablemodel.h"
 #include "appdata.h"
 #include "ui_logsdialog.h"
 #include "helpers.h"
@@ -48,6 +50,10 @@ LogsDialog::LogsDialog(QWidget *parent) :
 
   ui->setupUi(this);
   setWindowIcon(CompanionIcon("logs.png"));
+
+  m_logModel = new LogTableModel(this);
+  ui->logTable->setModel(m_logModel);
+  ui->logTable->setSelectionMode(QAbstractItemView::ExtendedSelection);
 
   ui->logTable->viewport()->installEventFilter(this);
 
@@ -131,7 +137,8 @@ LogsDialog::LogsDialog(QWidget *parent) :
   connect(ui->customPlot, &QCustomPlot::axisDoubleClick, this, &LogsDialog::axisLabelDoubleClick);
   connect(ui->customPlot, &QCustomPlot::legendDoubleClick, this, &LogsDialog::legendDoubleClick);
   connect(ui->FieldsTW, &QTableWidget::itemSelectionChanged, this, &LogsDialog::plotLogs);
-  connect(ui->logTable, &QTableWidget::itemSelectionChanged, this, &LogsDialog::plotLogs);
+  connect(ui->logTable->selectionModel(), &QItemSelectionModel::selectionChanged,
+          this, &LogsDialog::plotLogs);
   connect(ui->Reset_PB, &QPushButton::clicked, this, [this]() {
     ui->ZoomX_ChkB->setChecked(false);
     ui->ZoomY_ChkB->setChecked(false);
@@ -292,7 +299,7 @@ The columns for altitude \"GAlt\" and for speed \"GSpd\" are optional"));
   GpsLatLonFilter latLonFilter;
 
   for (int i = 1; i < n; i++) {
-    if ((ui->logTable->item(i-1, 1)->isSelected() && rangeSelected) || !rangeSelected) {
+    if ((ui->logTable->selectionModel()->isRowSelected(i - 1, QModelIndex()) && rangeSelected) || !rangeSelected) {
 
       GpsCoord coord = extractGpsCoordinates(input.at(i).at(gpscol));
 
@@ -621,7 +628,7 @@ void LogsDialog::fileOpen()
 
     if (cvsFileParse()) {
       ui->FieldsTW->clear();
-      ui->logTable->clear();
+      m_logModel->clear();
       ui->FieldsTW->setShowGrid(false);
       ui->FieldsTW->setContentsMargins(0, 0, 0, 0);
       ui->FieldsTW->setRowCount(csvlog.at(0).count() - 2);
@@ -635,30 +642,20 @@ void LogsDialog::fileOpen()
       }
 
       ui->FieldsTW->resizeRowsToContents();
-      ui->logTable->setColumnCount(csvlog.at(0).count());
-      ui->logTable->setRowCount(csvlog.count() - 1);
-      ui->logTable->setHorizontalHeaderLabels(csvlog.at(0));
+      m_logModel->setLog(csvlog);
       //s1.report("Load fields");
-
-      QAbstractItemModel *model = ui->logTable->model();
-      for (int i = 1; i < csvlog.count(); i++) {
-        for (int j = 0; j < csvlog.at(0).count(); j++) {
-          model->setData(model->index(i - 1, j, QModelIndex()), csvlog.at(i).at(j));
-        }
-      }
-
       //s1.report("Load data model");
 
       ui->logTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
       QVarLengthArray<int> sizes;
 
-      for (int i = 0; i < ui->logTable->columnCount(); i++) {
+      for (int i = 0; i < m_logModel->columnCount(); i++) {
         sizes.append(ui->logTable->columnWidth(i));
       }
 
       ui->logTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
 
-      for (int i = 0; i < ui->logTable->columnCount(); i++) {
+      for (int i = 0; i < m_logModel->columnCount(); i++) {
         if (i == 0)
           ui->logTable->setColumnHidden(i, true); // hide MSecsSinceEpoch column
         else
@@ -949,13 +946,13 @@ void LogsDialog::sessionsCurrentIndexChanged(int index)
     if (index < ui->sessions_CB->count() - 1) {
       bottom = ui->sessions_CB->itemData(index + 1, Qt::UserRole).toInt();
     } else {
-      bottom = ui->logTable->rowCount();
+      bottom = m_logModel->rowCount();
     }
 
-    QModelIndex topLeft = ui->logTable->model()->index(
+    QModelIndex topLeft = m_logModel->index(
       ui->sessions_CB->itemData(index, Qt::UserRole).toInt(), 0 , QModelIndex());
-    QModelIndex bottomRight = ui->logTable->model()->index(
-      bottom - 1, ui->logTable->columnCount() - 1, QModelIndex());
+    QModelIndex bottomRight = m_logModel->index(
+      bottom - 1, m_logModel->columnCount() - 1, QModelIndex());
 
     QItemSelection selection(topLeft, bottomRight);
     ui->logTable->selectionModel()->select(selection, QItemSelectionModel::Select);
@@ -989,15 +986,13 @@ std::pair<double, double> LogsDialog::GetMinMaxY() const
   // iterate over selected fields and rows to compute global min/max Y
   for (QTableWidgetItem *fieldItem : ui->FieldsTW->selectedItems()) {
     const int col = fieldItem->row() + 2;  // Date and Time are first two columns
-    const int rows = hasSelection ? selectedRows.length() : ui->logTable->rowCount();
+    const int rows = hasSelection ? selectedRows.length() : m_logModel->rowCount();
 
     for (int r = 0; r < rows; ++r) {
       const int tableRow = hasSelection ? selectedRows.at(r) : r;
-      QTableWidgetItem *cell = ui->logTable->item(tableRow, col);
-      if (!cell) continue;
 
       bool ok = false;
-      const double v = cell->text().toDouble(&ok);
+      const double v = m_logModel->textAt(tableRow, col).toDouble(&ok);
       if (!ok) continue;
 
       if (!found) {
@@ -1040,7 +1035,7 @@ void LogsDialog::plotLogs()
     std::sort(selectedRows.begin(), selectedRows.end());
   } else {
     hasLogSelection = false;
-    rowCount = ui->logTable->rowCount();
+    rowCount = m_logModel->rowCount();
   }
 
   //s.report("Row count");
@@ -1058,20 +1053,14 @@ void LogsDialog::plotLogs()
     plotCoords.name = plot->text();
 
     for (int row = 0; row < rowCount; row++) {
-      QTableWidgetItem *logValue;
       double y;
       double time;
       QDateTime datetime;
 
-      if (hasLogSelection) {
-        logValue = ui->logTable->item(selectedRows.at(row), plotColumn);
-        datetime = QDateTime::fromMSecsSinceEpoch(ui->logTable->item(selectedRows.at(row), 0)->text().toLongLong());
-      } else {
-        logValue = ui->logTable->item(row, plotColumn);
-        datetime = QDateTime::fromMSecsSinceEpoch(ui->logTable->item(row, 0)->text().toLongLong());
-      }
+      const int tableRow = hasLogSelection ? selectedRows.at(row) : row;
 
-      y = logValue->text().toDouble();
+      y = m_logModel->textAt(tableRow, plotColumn).toDouble();
+      datetime = QDateTime::fromMSecsSinceEpoch(m_logModel->textAt(tableRow, 0).toLongLong());
       plotCoords.y.push_back(y);
 
       if (plotCoords.min_y > y) plotCoords.min_y = y;

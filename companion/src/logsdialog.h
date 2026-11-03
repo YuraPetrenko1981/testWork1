@@ -33,6 +33,8 @@ namespace Ui {
   class LogsDialog;
 }
 
+class LogTableModel;
+
 class LogsDialog : public QDialog
 {
   Q_OBJECT
@@ -91,6 +93,7 @@ private slots:
 private:
   QList<QStringList> csvlog;
   Ui::LogsDialog *ui;
+  LogTableModel * m_logModel = nullptr;
   QCPAxisRect *axisRect;
   QCPLegend *rightLegend;
   bool plotLock;

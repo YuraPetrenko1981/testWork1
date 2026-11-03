@@ -221,6 +221,7 @@ set(companion_NAMES
   helpers_html
   labels
   logsdialog
+  logtablemodel
   mainwindow
   mdichild
   modelslist

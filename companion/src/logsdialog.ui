@@ -278,10 +278,43 @@
      </item>
     </layout>
    </item>
-   <item row="6" column="1" rowspan="8">
-    <layout class="QHBoxLayout" name="horizontalLayout_4" stretch="5,1">
-     <item>
-      <widget class="QTableView" name="logTable">
+    <item row="13" column="1">
+     <layout class="QHBoxLayout" name="horizontalLayout_parse">
+      <item>
+       <widget class="QProgressBar" name="parseProgressBar">
+        <property name="visible">
+         <bool>true</bool>
+        </property>
+        <property name="minimum">
+         <number>0</number>
+        </property>
+        <property name="maximum">
+         <number>100</number>
+        </property>
+        <property name="value">
+         <number>0</number>
+        </property>
+        <property name="textVisible">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="parseCancelButton">
+        <property name="visible">
+         <bool>true</bool>
+        </property>
+        <property name="text">
+         <string>Cancel</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item row="6" column="1" rowspan="7">
+     <layout class="QHBoxLayout" name="horizontalLayout_4" stretch="5,1">
+      <item>
+       <widget class="QTableView" name="logTable">
        <property name="sizePolicy">
         <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
          <horstretch>0</horstretch>

@@ -20,6 +20,7 @@
  */
 
 #include <math.h>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -27,6 +28,10 @@
 #include <iomanip>
 #include <QEvent>
 #include <QItemSelectionModel>
+#include <QFileInfo>
+#include <QThread>
+#include <QProgressBar>
+#include <QPushButton>
 #include "logsdialog.h"
 #include "logtablemodel.h"
 #include "appdata.h"
@@ -37,6 +42,110 @@
 #else
 #include <unistd.h>
 #endif
+
+class LogFileParserWorker : public QObject
+{
+  Q_OBJECT
+
+public:
+  explicit LogFileParserWorker(QObject *parent = nullptr) : QObject(parent) {}
+
+  void requestCancel() { m_cancelRequested.store(true); }
+
+public slots:
+  void parseFile(const QString & fileName)
+  {
+    QList<QStringList> parsedLog;
+    int errors = 0;
+    int lines = -1;
+
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+      emit failed(tr("Cannot open file %1").arg(fileName));
+      return;
+    }
+
+    const qint64 fileSize = file.size();
+    qint64 bytesRead = 0;
+    int lastPercent = -1;
+
+    QByteArray firstLine = file.readLine();
+    bytesRead += firstLine.size();
+    if (!QString::fromLatin1(firstLine).startsWith("Date,Time")) {
+      emit failed(tr("Invalid log file format"));
+      return;
+    }
+
+    file.seek(0);
+    bytesRead = 0;
+
+    int numfields = -1;
+    while (!file.atEnd()) {
+      if (m_cancelRequested.load()) {
+        emit canceled();
+        return;
+      }
+
+      QByteArray lineBytes = file.readLine();
+      bytesRead += lineBytes.size();
+      QString line = QString::fromLatin1(lineBytes).trimmed();
+      QStringList columns = line.split(',');
+
+      if (numfields == -1) {
+        numfields = columns.count();
+      }
+
+      if (columns.count() == numfields) {
+        if (lines == -1) {
+          parsedLog.append(QStringList("MSecsSinceEpoch") << columns);
+        } else {
+          QStringList sDate = columns.at(0).split("-");
+          QStringList sTime = columns.at(1).split(":");
+          QStringList sSecs;
+
+          if (sTime.count() == 3) {
+            sSecs = sTime.at(2).split(".");
+
+            if (sSecs.count() == 1)
+              sSecs.append("0");
+          }
+
+          if (sDate.count() == 3 && sTime.count() == 3 && sSecs.count() == 2) {
+            QDate d(sDate.at(0).toInt(), sDate.at(1).toInt(), sDate.at(2).toInt());
+            QTime t(sTime.at(0).toInt(), sTime.at(1).toInt(), sSecs.at(0).toInt(), sSecs.at(1).toInt());
+            QDateTime dt(d, t);
+            parsedLog.append(QStringList(QString::number(dt.toMSecsSinceEpoch())) << columns);
+          } else {
+            errors++;
+          }
+        }
+      } else {
+        errors++;
+      }
+      lines++;
+
+      if (fileSize > 0) {
+        int percent = static_cast<int>((bytesRead * 100) / fileSize);
+        if (percent != lastPercent) {
+          lastPercent = percent;
+          emit progress(percent);
+        }
+      }
+    }
+
+    emit progress(100);
+    emit finished(parsedLog, errors, lines, QFileInfo(fileName).baseName());
+  }
+
+signals:
+  void progress(int percent);
+  void finished(const QList<QStringList> & parsedLog, int errors, int lines, const QString & baseName);
+  void failed(const QString & error);
+  void canceled();
+
+private:
+  std::atomic<bool> m_cancelRequested{false};
+};
 
 LogsDialog::LogsDialog(QWidget *parent) :
   QDialog(parent, Qt::WindowTitleHint | Qt::WindowSystemMenuHint),
@@ -148,12 +257,19 @@ LogsDialog::LogsDialog(QWidget *parent) :
   connect(ui->CommonAxes_ChkB, &QPushButton::clicked, this, &LogsDialog::plotLogs);
   connect(ui->SaveSession_PB, &QPushButton::clicked, this, &LogsDialog::saveSession);
   connect(ui->fileOpen_PB, &QPushButton::clicked, this, &LogsDialog::fileOpen);
+  connect(ui->parseCancelButton, &QPushButton::clicked, this, [this]() {
+    m_parseCanceled = true;
+    if (m_parseWorker) {
+      m_parseWorker->requestCancel();
+    }
+  });
   connect(ui->mapsButton, &QPushButton::clicked, this, &LogsDialog::mapsButtonClicked);
   connect(ui->sessions_CB, static_cast<void(QComboBox::*)(int)>(&QComboBox::currentIndexChanged), this, &LogsDialog::sessionsCurrentIndexChanged);
 }
 
 LogsDialog::~LogsDialog()
 {
+  stopParseWorker();
   delete ui;
 }
 
@@ -623,58 +739,167 @@ void LogsDialog::fileOpen()
   if (!fileName.isEmpty()) {
     g.logDir(fileName);
     ui->FileName_LE->setText(fileName);
-    //Stopwatch s1("LogViewer");
-    //s1.report("Start");
-
-    if (cvsFileParse()) {
-      ui->FieldsTW->clear();
-      m_logModel->clear();
-      ui->FieldsTW->setShowGrid(false);
-      ui->FieldsTW->setContentsMargins(0, 0, 0, 0);
-      ui->FieldsTW->setRowCount(csvlog.at(0).count() - 2);
-      ui->FieldsTW->setColumnCount(1);
-      ui->FieldsTW->setHorizontalHeaderLabels(QStringList(tr("Available fields")));
-      ui->logTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-
-      for (int i = 3; i < csvlog.at(0).count(); i++) {
-        QTableWidgetItem* item= new QTableWidgetItem(csvlog.at(0).at(i));
-        ui->FieldsTW->setItem(i - 3, 0, item);
-      }
-
-      ui->FieldsTW->resizeRowsToContents();
-      m_logModel->setLog(csvlog);
-      //s1.report("Load fields");
-      //s1.report("Load data model");
-
-      ui->logTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
-      QVarLengthArray<int> sizes;
-
-      for (int i = 0; i < m_logModel->columnCount(); i++) {
-        sizes.append(ui->logTable->columnWidth(i));
-      }
-
-      ui->logTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
-
-      for (int i = 0; i < m_logModel->columnCount(); i++) {
-        if (i == 0)
-          ui->logTable->setColumnHidden(i, true); // hide MSecsSinceEpoch column
-        else
-          ui->logTable->setColumnWidth(i, sizes.at(i));
-      }
-
-      //s1.report("Adjust headers");
-
-      // The model is fully populated; the next paint of the viewport is the
-      // moment the table becomes visible.
-      m_tableModelReady = true;
-      ui->logTable->viewport()->update();
-    }
-    else {
-      m_loadTimingActive = false;
-      m_tableModelReady = false;
-    }
+    startParseFile(fileName);
   }
 }
+
+void LogsDialog::startParseFile(const QString & fileName)
+{
+  stopParseWorker();
+  m_pendingLogFile = fileName;
+  m_parseCanceled = false;
+
+  m_loadStart = std::chrono::steady_clock::now();
+  m_loadTimingActive = true;
+  m_tableModelReady = false;
+
+  setParseUiState(true);
+
+  m_parseThread = new QThread(this);
+  m_parseWorker = new LogFileParserWorker();
+  m_parseWorker->moveToThread(m_parseThread);
+
+  connect(m_parseThread, &QThread::started, m_parseWorker, [this]() {
+    m_parseWorker->parseFile(m_pendingLogFile);
+  });
+  connect(m_parseWorker, &LogFileParserWorker::progress, this, &LogsDialog::onParseProgress);
+  connect(m_parseWorker, &LogFileParserWorker::finished, this, &LogsDialog::onParseFinished);
+  connect(m_parseWorker, &LogFileParserWorker::failed, this, &LogsDialog::onParseFailed);
+  connect(m_parseWorker, &LogFileParserWorker::canceled, this, &LogsDialog::onParseCanceled);
+  connect(m_parseThread, &QThread::finished, m_parseWorker, &QObject::deleteLater);
+
+  m_parseThread->start();
+}
+
+void LogsDialog::stopParseWorker()
+{
+  if (!m_parseThread)
+    return;
+
+  if (m_parseWorker) {
+    m_parseWorker->requestCancel();
+  }
+
+  m_parseThread->quit();
+  m_parseThread->wait();
+  m_parseThread->deleteLater();
+  m_parseThread = nullptr;
+  m_parseWorker = nullptr;
+}
+
+void LogsDialog::setParseUiState(bool active)
+{
+  ui->parseCancelButton->setEnabled(active);
+  if (active) {
+    ui->parseProgressBar->setValue(0);
+  }
+  ui->fileOpen_PB->setEnabled(!active);
+  ui->FieldsTW->setEnabled(!active);
+  ui->logTable->setEnabled(!active);
+  ui->mapsButton->setEnabled(!active);
+  if (active) {
+    ui->SaveSession_PB->setEnabled(false);
+  }
+}
+
+void LogsDialog::finishParseUiState()
+{
+  ui->fileOpen_PB->setEnabled(true);
+  ui->FieldsTW->setEnabled(true);
+  ui->logTable->setEnabled(true);
+  ui->mapsButton->setEnabled(true);
+  ui->parseCancelButton->setEnabled(false);
+}
+
+void LogsDialog::onParseProgress(int percent)
+{
+  ui->parseProgressBar->setValue(percent);
+}
+
+void LogsDialog::onParseFinished(const QList<QStringList> & parsedLog, int errors, int lines, const QString & baseName)
+{
+  stopParseWorker();
+  finishParseUiState();
+  applyParsedLog(parsedLog, errors, lines, baseName);
+}
+
+void LogsDialog::onParseFailed(const QString & error)
+{
+  stopParseWorker();
+  finishParseUiState();
+  m_loadTimingActive = false;
+  m_tableModelReady = false;
+  QMessageBox::warning(this, CPN_STR_APP_NAME, error);
+}
+
+void LogsDialog::onParseCanceled()
+{
+  stopParseWorker();
+  finishParseUiState();
+  m_loadTimingActive = false;
+  m_tableModelReady = false;
+}
+
+void LogsDialog::applyParsedLog(const QList<QStringList> & parsedLog, int errors, int lines, const QString & baseName)
+{
+  csvlog = parsedLog;
+  logFilename = baseName;
+
+  if (csvlog.count() <= 1) {
+    m_loadTimingActive = false;
+    m_tableModelReady = false;
+    return;
+  }
+
+  ui->FieldsTW->clear();
+  m_logModel->clear();
+  ui->FieldsTW->setShowGrid(false);
+  ui->FieldsTW->setContentsMargins(0, 0, 0, 0);
+  ui->FieldsTW->setRowCount(csvlog.at(0).count() - 2);
+  ui->FieldsTW->setColumnCount(1);
+  ui->FieldsTW->setHorizontalHeaderLabels(QStringList(tr("Available fields")));
+  ui->logTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+
+  for (int i = 3; i < csvlog.at(0).count(); i++) {
+    QTableWidgetItem* item= new QTableWidgetItem(csvlog.at(0).at(i));
+    ui->FieldsTW->setItem(i - 3, 0, item);
+  }
+
+  ui->FieldsTW->resizeRowsToContents();
+  m_logModel->setLog(csvlog);
+
+  ui->logTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+  QVarLengthArray<int> sizes;
+
+  for (int i = 0; i < m_logModel->columnCount(); i++) {
+    sizes.append(ui->logTable->columnWidth(i));
+  }
+
+  ui->logTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+
+  for (int i = 0; i < m_logModel->columnCount(); i++) {
+    if (i == 0)
+      ui->logTable->setColumnHidden(i, true); // hide MSecsSinceEpoch column
+    else
+      ui->logTable->setColumnWidth(i, sizes.at(i));
+  }
+
+  if (errors > 1) {
+    QMessageBox::warning(this, CPN_STR_APP_NAME,
+        tr("The selected logfile contains %1 invalid lines out of  %2 total lines").arg(errors).arg(lines));
+  }
+
+  plotLock = true;
+  setFlightSessions();
+  plotLock = false;
+
+  // The model is fully populated; the next paint of the viewport is the
+  // moment the table becomes visible.
+  m_tableModelReady = true;
+  ui->logTable->viewport()->update();
+}
+
+#include "logsdialog.moc"
 
 bool LogsDialog::eventFilter(QObject *watched, QEvent *event)
 {

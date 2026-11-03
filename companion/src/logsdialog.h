@@ -23,6 +23,7 @@
 
 #include <QtCore>
 #include <QDialog>
+#include <QThread>
 #include <chrono>
 #include "qcustomplot.h"
 
@@ -34,6 +35,7 @@ namespace Ui {
 }
 
 class LogTableModel;
+class LogFileParserWorker;
 
 class LogsDialog : public QDialog
 {
@@ -89,6 +91,10 @@ private slots:
   void mapsButtonClicked();
   void yAxisChangeRanges(QCPRange range);
   std::pair<double, double> GetMinMaxY() const;
+  void onParseProgress(int percent);
+  void onParseFinished(const QList<QStringList> & parsedLog, int errors, int lines, const QString & baseName);
+  void onParseFailed(const QString & error);
+  void onParseCanceled();
 
 private:
   QList<QStringList> csvlog;
@@ -118,6 +124,11 @@ private:
   QCPItemStraightLine * cursorLine;
 
   bool cvsFileParse();
+  void startParseFile(const QString & fileName);
+  void stopParseWorker();
+  void setParseUiState(bool active);
+  void finishParseUiState();
+  void applyParsedLog(const QList<QStringList> & parsedLog, int errors, int lines, const QString & baseName);
   QList<QStringList> filterGePoints(const QList<QStringList> & input);
   void exportToGoogleEarth();
   QDateTime getRecordTimeStamp(int index);
@@ -131,6 +142,11 @@ private:
   void placeCursor(double x, bool second);
   QString formatTimeDelta(double timeDelta);
   void updateCursorsLabel();
+
+  QThread * m_parseThread = nullptr;
+  LogFileParserWorker * m_parseWorker = nullptr;
+  QString m_pendingLogFile;
+  bool m_parseCanceled = false;
 
 
 };

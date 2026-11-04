@@ -96,6 +96,7 @@ private slots:
   void onParseFinished(const LogParseResult & result);
   void onParseFailed(const QString & error);
   void onParseCanceled();
+  void onParseTimingStart(qint64 ticks);
 
 private:
   QVector<LogRecord> m_records;

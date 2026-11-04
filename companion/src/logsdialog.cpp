@@ -233,6 +233,10 @@ public:
 public slots:
   void parseFile(const QString & fileName)
   {
+    const auto t0 = std::chrono::steady_clock::now().time_since_epoch();
+    const qint64 ticks = std::chrono::duration_cast<std::chrono::nanoseconds>(t0).count();
+    emit timingStarted(ticks);
+
     LogParseResult result;
     result.errors = 0;
     result.lines = -1;
@@ -280,6 +284,7 @@ public slots:
   }
 
 signals:
+  void timingStarted(qint64 ticks);
   void progress(int percent);
   void finished(const LogParseResult & result);
   void failed(const QString & error);
@@ -855,8 +860,7 @@ void LogsDialog::startParseFile(const QString & fileName)
   m_pendingLogFile = fileName;
   m_parseCanceled = false;
 
-  m_loadStart = std::chrono::steady_clock::now();
-  m_loadTimingActive = true;
+  m_loadTimingActive = false;
   m_tableModelReady = false;
 
   setParseUiState(true);
@@ -868,6 +872,7 @@ void LogsDialog::startParseFile(const QString & fileName)
   connect(m_parseThread, &QThread::started, m_parseWorker, [this]() {
     m_parseWorker->parseFile(m_pendingLogFile);
   });
+  connect(m_parseWorker, &LogFileParserWorker::timingStarted, this, &LogsDialog::onParseTimingStart);
   connect(m_parseWorker, &LogFileParserWorker::progress, this, &LogsDialog::onParseProgress);
   connect(m_parseWorker, &LogFileParserWorker::finished, this, &LogsDialog::onParseFinished);
   connect(m_parseWorker, &LogFileParserWorker::failed, this, &LogsDialog::onParseFailed);
@@ -946,6 +951,13 @@ void LogsDialog::onParseCanceled()
   m_tableModelReady = false;
 }
 
+void LogsDialog::onParseTimingStart(qint64 ticks)
+{
+  m_loadStart = std::chrono::steady_clock::time_point(std::chrono::nanoseconds(ticks));
+  m_loadTimingActive = true;
+  m_tableModelReady = false;
+}
+
 void LogsDialog::applyParsedLog(const LogParseResult & result)
 {
   m_records = result.records;
@@ -1014,7 +1026,6 @@ bool LogsDialog::eventFilter(QObject *watched, QEvent *event)
   if (m_loadTimingActive && m_tableModelReady &&
       watched == ui->logTable->viewport() &&
       event->type() == QEvent::Paint) {
-
     const auto t1 = std::chrono::steady_clock::now();
     const double dtMs =
         std::chrono::duration<double, std::milli>(t1 - m_loadStart).count();

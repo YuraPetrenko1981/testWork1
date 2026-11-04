@@ -161,26 +161,30 @@ qt_wrap_cpp(common_SRCS ${common_MOC_HDRS})
 # qrc used by Companion and Simulator
 file(MAKE_DIRECTORY ${HWDEFS_QRC_DIR})
 
-add_custom_command(OUTPUT ${HWDEFS_QRC}
+execute_process(
   COMMAND ${PYTHON_EXECUTABLE} ${HWDEFS_CMD}
       -d ${HWDEFS_DIR}
       -t ${HWDEFS_TMPL}
       -p ${HWDEFS_PHDR}
       -o ${HWDEFS_QRC}
-  DEPENDS ${HWDEFS_TMPL}
+  RESULT_VARIABLE HWDEFS_GEN_RESULT
 )
 
+if (NOT HWDEFS_GEN_RESULT EQUAL 0)
+  message(FATAL_ERROR "Failed to generate hwdefs.qrc")
+endif()
+
 set_source_files_properties(${HWDEFS_QRC} PROPERTIES GENERATED TRUE)
-set_source_files_properties(${HWDEFS_QRC} PROPERTIES SKIP_AUTOGEN ON)
 
 set(common_RESOURCES
   companion.qrc
   ${TRANSLATIONS_QRC}
-  ${HWDEFS_QRC}
 )
 qt_add_resources(common_RCC ${common_RESOURCES})
 
-add_library(common ${common_SRCS} ${common_RCC})
+qt_add_resources(common_hwdefs_RCC ${HWDEFS_QRC})
+
+add_library(common ${common_SRCS} ${common_RCC} ${common_hwdefs_RCC})
 
 target_link_libraries(common
   datamodels

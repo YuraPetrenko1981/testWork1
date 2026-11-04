@@ -253,34 +253,18 @@ public slots:
     }
 
     const qint64 fileSize = file.size();
-    qint64 bytesRead = 0;
-    int lastPercent = -1;
 
-    QByteArray fileBytes = file.readAll();
-    bytesRead = fileBytes.size();
-
+    result = parseLogCsvDevice(file, fileSize,
+        [this](int percent) { emit progress(percent); },
+        &m_cancelRequested);
     if (m_cancelRequested.load()) {
       emit canceled();
       return;
     }
 
-    result = parseLogCsvText(QString::fromLatin1(fileBytes));
     if (result.headers.isEmpty()) {
       emit failed(tr("Invalid log file format"));
       return;
-    }
-
-    if (m_cancelRequested.load()) {
-      emit canceled();
-      return;
-    }
-
-    if (fileSize > 0) {
-      int percent = static_cast<int>((bytesRead * 100) / fileSize);
-      if (percent != lastPercent) {
-        lastPercent = percent;
-        emit progress(percent);
-      }
     }
 
     emit progress(100);

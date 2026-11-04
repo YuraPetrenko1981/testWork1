@@ -27,6 +27,11 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <cstring>
+#ifdef _WIN32
+#include <windows.h>
+#include <psapi.h>
+#endif
 #include <QEvent>
 #include <QItemSelectionModel>
 #include <QFileInfo>
@@ -827,6 +832,7 @@ void LogsDialog::removeAllGraphs()
   ui->customPlot->legend->setVisible(false);
   rightLegend->clearItems();
   rightLegend->setVisible(false);
+  writeMemoryLog("graphs_cleared");
   axisRect->axis(QCPAxis::atRight)->setSelectedParts(QCPAxis::spNone);
   axisRect->axis(QCPAxis::atRight)->setVisible(false);
   axisRect->axis(QCPAxis::atLeft)->setSelectedParts(QCPAxis::spNone);
@@ -859,9 +865,11 @@ void LogsDialog::startParseFile(const QString & fileName)
   stopParseWorker();
   m_pendingLogFile = fileName;
   m_parseCanceled = false;
+  m_timingFile = fileName;
 
   m_loadTimingActive = false;
   m_tableModelReady = false;
+  writeMemoryLog("start_parse");
 
   setParseUiState(true);
 
@@ -931,6 +939,7 @@ void LogsDialog::onParseFinished(const LogParseResult & result)
 {
   stopParseWorker();
   finishParseUiState();
+  writeMemoryLog("parse_finished");
   applyParsedLog(result);
 }
 
@@ -940,6 +949,7 @@ void LogsDialog::onParseFailed(const QString & error)
   finishParseUiState();
   m_loadTimingActive = false;
   m_tableModelReady = false;
+  writeMemoryLog("parse_failed");
   QMessageBox::warning(this, CPN_STR_APP_NAME, error);
 }
 
@@ -949,6 +959,7 @@ void LogsDialog::onParseCanceled()
   finishParseUiState();
   m_loadTimingActive = false;
   m_tableModelReady = false;
+  writeMemoryLog("parse_canceled");
 }
 
 void LogsDialog::onParseTimingStart(qint64 ticks)
@@ -960,6 +971,7 @@ void LogsDialog::onParseTimingStart(qint64 ticks)
 
 void LogsDialog::applyParsedLog(const LogParseResult & result)
 {
+  writeMemoryLog("apply_start");
   m_records = result.records;
   m_headers = result.headers;
   m_columnIds = result.columnIds;
@@ -968,6 +980,7 @@ void LogsDialog::applyParsedLog(const LogParseResult & result)
   if (m_records.isEmpty() || m_headers.isEmpty()) {
     m_loadTimingActive = false;
     m_tableModelReady = false;
+    writeMemoryLog("apply_empty");
     return;
   }
 
@@ -1017,6 +1030,7 @@ void LogsDialog::applyParsedLog(const LogParseResult & result)
   // moment the table becomes visible.
   m_tableModelReady = true;
   ui->logTable->viewport()->update();
+  writeMemoryLog("apply_done");
 }
 
 #include "logsdialog.moc"
@@ -1031,6 +1045,7 @@ bool LogsDialog::eventFilter(QObject *watched, QEvent *event)
         std::chrono::duration<double, std::milli>(t1 - m_loadStart).count();
 
     writeLoadTiming(dtMs, "ok");
+    writeMemoryLog("table_painted");
 
     m_loadTimingActive = false;
     m_tableModelReady = false;
@@ -1062,6 +1077,60 @@ void LogsDialog::writeLoadTiming(double dtMs, const char * status) const
       << " status=" << status
       << " rows=" << m_records.size()
       << " cols=" << m_headers.size()
+      << " file=" << m_timingFile.toUtf8().constData()
+      << '\n';
+  out.flush();
+}
+
+void LogsDialog::writeMemoryLog(const char * stage) const
+{
+  std::filesystem::path path;
+#ifdef _WIN32
+  if (const wchar_t *env = _wgetenv(L"CPN_TIMING_LOG"))
+    path = env;
+  else
+#endif
+    path = std::filesystem::temp_directory_path() / "companion_table_timing.txt";
+
+  std::ofstream out(path, std::ios::app);
+  if (!out)
+    return;
+
+  const auto wallMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::system_clock::now().time_since_epoch()).count();
+
+#ifdef _WIN32
+  PROCESS_MEMORY_COUNTERS_EX pmc;
+  std::memset(&pmc, 0, sizeof(pmc));
+  pmc.cb = sizeof(pmc);
+  SIZE_T workingSet = 0;
+  SIZE_T privateBytes = 0;
+  SIZE_T peakWorkingSet = 0;
+  if (GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc), sizeof(pmc))) {
+    workingSet = pmc.WorkingSetSize;
+    privateBytes = pmc.PrivateUsage;
+    peakWorkingSet = pmc.PeakWorkingSetSize;
+  }
+#endif
+
+  out << "utc_ms=" << wallMs
+      << " stage=" << stage
+#ifdef _WIN32
+      << " ws_mb=" << std::fixed << std::setprecision(3) << (workingSet / (1024.0 * 1024.0))
+      << " private_mb=" << std::fixed << std::setprecision(3) << (privateBytes / (1024.0 * 1024.0))
+      << " peak_ws_mb=" << std::fixed << std::setprecision(3) << (peakWorkingSet / (1024.0 * 1024.0))
+#endif
+      << " rows=" << m_records.size()
+      << " rows_cap=" << m_records.capacity()
+      << " headers=" << m_headers.size()
+      << " headers_cap=" << m_headers.capacity()
+      << " cols=" << m_columnIds.size()
+      << " cols_cap=" << m_columnIds.capacity()
+      << " fields_rows=" << (ui ? ui->FieldsTW->rowCount() : 0)
+      << " graphs=" << (ui ? ui->customPlot->graphCount() : 0)
+      << " items=" << (ui ? ui->customPlot->itemCount() : 0)
+      << " legend_items=" << (ui ? ui->customPlot->legend->itemCount() : 0)
+      << " right_legend_items=" << (rightLegend ? rightLegend->itemCount() : 0)
       << " file=" << m_timingFile.toUtf8().constData()
       << '\n';
   out.flush();

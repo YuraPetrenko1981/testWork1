@@ -115,6 +115,7 @@ private:
   bool m_tableModelReady = false;
   QString m_timingFile;
   void writeLoadTiming(double dtMs, const char * status) const;
+  void writeMemoryLog(const char * stage) const;
 
   QVarLengthArray<Qt::GlobalColor> colors;
   QPen pen;

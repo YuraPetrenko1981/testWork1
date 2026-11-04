@@ -136,7 +136,8 @@ endif()
 set(HWDEFS_DIR "${CMAKE_CURRENT_BINARY_DIR}/../../radio/src")
 set(HWDEFS_TMPL "${COMPANION_SRC_DIRECTORY}/hwdefs.qrc.in")
 set(HWDEFS_PHDR "HWDEF_JSON_LIST")
-set(HWDEFS_QRC "${CMAKE_CURRENT_BINARY_DIR}/hwdefs.qrc")
+set(HWDEFS_QRC_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(HWDEFS_QRC "${HWDEFS_QRC_DIR}/hwdefs.qrc")
 set(HWDEFS_CMD "${COMPANION_SRC_DIRECTORY}/../util/generate_hwdefs_qrc.py")
 
 ############# Common lib ###############
@@ -144,6 +145,7 @@ set(HWDEFS_CMD "${COMPANION_SRC_DIRECTORY}/../util/generate_hwdefs_qrc.py")
 set(common_SRCS
   customdebug.cpp
   helpers.cpp
+  logparser.cpp
   translations.cpp
   modeledit/node.cpp  # used in simulator
   modeledit/edge.cpp  # used by node
@@ -157,6 +159,8 @@ set(common_MOC_HDRS
 qt_wrap_cpp(common_SRCS ${common_MOC_HDRS})
 
 # qrc used by Companion and Simulator
+file(MAKE_DIRECTORY ${HWDEFS_QRC_DIR})
+
 add_custom_command(OUTPUT ${HWDEFS_QRC}
   COMMAND ${PYTHON_EXECUTABLE} ${HWDEFS_CMD}
       -d ${HWDEFS_DIR}
@@ -165,6 +169,9 @@ add_custom_command(OUTPUT ${HWDEFS_QRC}
       -o ${HWDEFS_QRC}
   DEPENDS ${HWDEFS_TMPL}
 )
+
+set_source_files_properties(${HWDEFS_QRC} PROPERTIES GENERATED TRUE)
+set_source_files_properties(${HWDEFS_QRC} PROPERTIES SKIP_AUTOGEN ON)
 
 set(common_RESOURCES
   companion.qrc

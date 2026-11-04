@@ -1,0 +1,2 @@
+Date,Time,1RSS(dB),RQly(%),RSNR(dB),RxBt(V),Curr(A),Capa(mAh),Alt(m),VSpd(m/s),GPS,GSpd(kmh),GAlt(m),Hdg(@),Sats,FM,Rud,Ele,Thr,Ail,S1,S2,SA,SB,SC,SD,LSW,CH1(us),CH2(us),CH3(us),CH4(us),CH5(us),CH6(us),CH7(us),CH8(us),TxBat(V)
+2024-06-01,10:00:00.000,abc,76,-2,7.8,0.1,0,39.3,3.0,,40.0,189,0,13,ANGLE,0,861,931,144,-774,-981,0,0,1,0,0x0000000000000000,1500,1920,1954,1570,1122,1021,1361,1828,8.2

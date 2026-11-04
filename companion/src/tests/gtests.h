@@ -19,8 +19,8 @@
  * GNU General Public License for more details.
  */
 
-#ifndef _GTESTS_H_
-#define _GTESTS_H_
+#ifndef GTESTS_H
+#define GTESTS_H
 
 #include <QtCore/QString>
 #include <math.h>
@@ -39,4 +39,4 @@ class EdgeTxTest : public testing::Test
     }
 };
 
-#endif // _GTESTS_H_
+#endif // GTESTS_H

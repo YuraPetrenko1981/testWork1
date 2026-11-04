@@ -22,7 +22,9 @@
 #include <QApplication>
 #include <stdio.h>
 #include <stdlib.h>
+#if !defined(_WIN32)
 #include <unistd.h>
+#endif
 #include <memory>
 #include "gtests.h"
 
@@ -45,7 +47,7 @@ namespace {
 
 void printColorCode(int color)
 {
-#if !GTEST_OS_WINDOWS
+#if !defined(_WIN32)
   if (isatty(fileno(stdout)))
     fprintf(stdout, "\033[0;%dm", color);
 #endif

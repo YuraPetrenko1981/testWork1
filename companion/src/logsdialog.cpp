@@ -61,6 +61,8 @@ LogColumnId columnIdFromHeader(const QString & header)
   if (header == "GPS") return LogColumnId::GPS;
   if (header == "GAlt" || header == "GAlt(m)") return LogColumnId::GAlt;
   if (header == "GSpd" || header == "GSpd(kmh)") return LogColumnId::GSpd;
+  if (header == "Hdg(@)") return LogColumnId::Hdg;
+  if (header == "Sats") return LogColumnId::Sats;
   if (header == "FM") return LogColumnId::FM;
   if (header == "Rud") return LogColumnId::Rud;
   if (header == "Ele") return LogColumnId::Ele;
@@ -109,6 +111,11 @@ bool parseDouble(const QString & text, double & value)
   return ok;
 }
 
+QString formatDouble(double value)
+{
+  return QString::number(value, 'f', 3);
+}
+
 bool numericFieldValue(const LogRecord & record, LogColumnId id, double & value)
 {
   switch (id) {
@@ -144,6 +151,12 @@ bool numericFieldValue(const LogRecord & record, LogColumnId id, double & value)
       return true;
     case LogColumnId::GSpd:
       value = record.gSpd;
+      return true;
+    case LogColumnId::Hdg:
+      value = record.hdg;
+      return true;
+    case LogColumnId::Sats:
+      value = record.sats;
       return true;
     case LogColumnId::Rud:
       value = record.rud;
@@ -329,6 +342,12 @@ public slots:
                 break;
               case LogColumnId::GSpd:
                 ok = parseDouble(value, record.gSpd) && ok;
+                break;
+              case LogColumnId::Hdg:
+                ok = parseInt(value, record.hdg) && ok;
+                break;
+              case LogColumnId::Sats:
+                ok = parseInt(value, record.sats) && ok;
                 break;
               case LogColumnId::FM:
                 record.fm = value;
@@ -1234,42 +1253,141 @@ void LogsDialog::saveSession()
     QFile data(filename);
     if(data.open(QFile::WriteOnly |QFile::Truncate)) {
       QTextStream output(&data);
-      output << m_headers.join(",") << '\n';
+      QStringList exportHeaders;
+      exportHeaders.reserve(m_headers.size());
+      for (const QString & header : m_headers) {
+        if (header == "MSecsSinceEpoch")
+          continue;
+        exportHeaders.append(header);
+      }
+
+      output << exportHeaders.join(",") << '\n';
+
       for (const LogRecord &rec : sessionRecords) {
         QStringList row;
-        row.reserve(m_headers.size());
-        row << QString::number(rec.epochMs);
-        row << rec.date.toString("yyyy-MM-dd");
-        row << rec.time.toString("hh:mm:ss.zzz");
-        row << QString::number(rec.rss1);
-        row << QString::number(rec.rqly);
-        row << QString::number(rec.rsnr);
-        row << QString::number(rec.rxBt);
-        row << QString::number(rec.curr);
-        row << QString::number(rec.capa);
-        row << QString::number(rec.alt);
-        row << QString::number(rec.vspd);
-        row << rec.fm;
-        row << QString::number(rec.rud);
-        row << QString::number(rec.ele);
-        row << QString::number(rec.thr);
-        row << QString::number(rec.ail);
-        row << QString::number(rec.s1);
-        row << QString::number(rec.s2);
-        row << QString::number(rec.sa);
-        row << QString::number(rec.sb);
-        row << QString::number(rec.sc);
-        row << QString::number(rec.sd);
-        row << QString("0x%1").arg(rec.lsw, 16, 16, QChar('0')).toUpper();
-        row << QString::number(rec.ch1);
-        row << QString::number(rec.ch2);
-        row << QString::number(rec.ch3);
-        row << QString::number(rec.ch4);
-        row << QString::number(rec.ch5);
-        row << QString::number(rec.ch6);
-        row << QString::number(rec.ch7);
-        row << QString::number(rec.ch8);
-        row << QString::number(rec.txBat);
+        row.reserve(exportHeaders.size());
+
+        for (int i = 0; i < m_columnIds.size(); ++i) {
+          if (m_columnIds.at(i) == LogColumnId::EpochMs)
+            continue;
+
+          switch (m_columnIds.at(i)) {
+            case LogColumnId::Date:
+              row << rec.date.toString("yyyy-MM-dd");
+              break;
+            case LogColumnId::Time:
+              row << rec.time.toString("hh:mm:ss.zzz");
+              break;
+            case LogColumnId::Rss1:
+              row << QString::number(rec.rss1);
+              break;
+            case LogColumnId::RQly:
+              row << QString::number(rec.rqly);
+              break;
+            case LogColumnId::RSNR:
+              row << QString::number(rec.rsnr);
+              break;
+            case LogColumnId::RxBt:
+              row << formatDouble(rec.rxBt);
+              break;
+            case LogColumnId::Curr:
+              row << formatDouble(rec.curr);
+              break;
+            case LogColumnId::Capa:
+              row << QString::number(rec.capa);
+              break;
+            case LogColumnId::Alt:
+              row << formatDouble(rec.alt);
+              break;
+            case LogColumnId::VSpd:
+              row << formatDouble(rec.vspd);
+              break;
+            case LogColumnId::GPS:
+              row << rec.gps;
+              break;
+            case LogColumnId::GAlt:
+              row << formatDouble(rec.gAlt);
+              break;
+            case LogColumnId::GSpd:
+              row << formatDouble(rec.gSpd);
+              break;
+            case LogColumnId::Hdg:
+              row << QString::number(rec.hdg);
+              break;
+            case LogColumnId::Sats:
+              row << QString::number(rec.sats);
+              break;
+            case LogColumnId::FM:
+              row << rec.fm;
+              break;
+            case LogColumnId::Rud:
+              row << QString::number(rec.rud);
+              break;
+            case LogColumnId::Ele:
+              row << QString::number(rec.ele);
+              break;
+            case LogColumnId::Thr:
+              row << QString::number(rec.thr);
+              break;
+            case LogColumnId::Ail:
+              row << QString::number(rec.ail);
+              break;
+            case LogColumnId::S1:
+              row << QString::number(rec.s1);
+              break;
+            case LogColumnId::S2:
+              row << QString::number(rec.s2);
+              break;
+            case LogColumnId::SA:
+              row << QString::number(rec.sa);
+              break;
+            case LogColumnId::SB:
+              row << QString::number(rec.sb);
+              break;
+            case LogColumnId::SC:
+              row << QString::number(rec.sc);
+              break;
+            case LogColumnId::SD:
+              row << QString::number(rec.sd);
+              break;
+            case LogColumnId::LSW:
+              row << QString("0x%1").arg(rec.lsw, 16, 16, QChar('0')).toUpper();
+              break;
+            case LogColumnId::CH1:
+              row << QString::number(rec.ch1);
+              break;
+            case LogColumnId::CH2:
+              row << QString::number(rec.ch2);
+              break;
+            case LogColumnId::CH3:
+              row << QString::number(rec.ch3);
+              break;
+            case LogColumnId::CH4:
+              row << QString::number(rec.ch4);
+              break;
+            case LogColumnId::CH5:
+              row << QString::number(rec.ch5);
+              break;
+            case LogColumnId::CH6:
+              row << QString::number(rec.ch6);
+              break;
+            case LogColumnId::CH7:
+              row << QString::number(rec.ch7);
+              break;
+            case LogColumnId::CH8:
+              row << QString::number(rec.ch8);
+              break;
+            case LogColumnId::TxBat:
+              row << formatDouble(rec.txBat);
+              break;
+            case LogColumnId::EpochMs:
+            case LogColumnId::Unknown:
+            default:
+              row << QString();
+              break;
+          }
+        }
+
         output << row.join(",") << '\n';
       }
     }

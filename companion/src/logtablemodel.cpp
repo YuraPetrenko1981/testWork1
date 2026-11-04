@@ -87,6 +87,10 @@ QVariant LogTableModel::data(const QModelIndex & index, int role) const
       return formatDouble(rec.gAlt);
     case LogColumnId::GSpd:
       return formatDouble(rec.gSpd);
+    case LogColumnId::Hdg:
+      return rec.hdg;
+    case LogColumnId::Sats:
+      return rec.sats;
     case LogColumnId::FM:
       return rec.fm;
     case LogColumnId::Rud:

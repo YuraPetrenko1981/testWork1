@@ -19,10 +19,8 @@
 #include <QAbstractTableModel>
 #include "logrecord.h"
 #include <QStringList>
-#include <vector>
-
-// Read-only model for the telemetry log table. Data is stored in a flat
-// std::vector: row-major, m_columnCount entries per row.
+// Read-only model for the telemetry log table. Data is owned externally
+// and referenced by pointer.
 class LogTableModel : public QAbstractTableModel
 {
 public:
@@ -34,13 +32,13 @@ public:
   QVariant headerData(int section, Qt::Orientation orientation,
                       int role = Qt::DisplayRole) const override;
 
-  void setLog(const QVector<LogRecord> & records, const QStringList & headers, const QVector<LogColumnId> & columnIds);
+  void setLog(const QVector<LogRecord> * records, const QStringList & headers, const QVector<LogColumnId> & columnIds);
   void clear();
 
   QString textAt(int row, int column) const;
 
 private:
-  QVector<LogRecord> m_records;
+  const QVector<LogRecord> * m_records = nullptr;
   QStringList m_headers;
   QVector<LogColumnId> m_columnIds;
   int m_rows = 0;

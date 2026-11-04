@@ -1121,7 +1121,7 @@ void LogsDialog::applyParsedLog(const LogParseResult & result)
   }
 
   ui->FieldsTW->resizeRowsToContents();
-  m_logModel->setLog(m_records, m_headers, m_columnIds);
+  m_logModel->setLog(&m_records, m_headers, m_columnIds);
 
   ui->logTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
   QVarLengthArray<int> sizes;

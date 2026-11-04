@@ -45,6 +45,9 @@ QVariant LogTableModel::data(const QModelIndex & index, int role) const
   if (!index.isValid() || role != Qt::DisplayRole)
     return QVariant();
 
+  if (!m_records)
+    return QVariant();
+
   const int row = index.row();
   const int column = index.column();
   if (row < 0 || row >= m_rows || column < 0 || column >= m_columns)
@@ -53,7 +56,7 @@ QVariant LogTableModel::data(const QModelIndex & index, int role) const
   if (column < 0 || column >= m_columns)
     return QVariant();
 
-  const LogRecord &rec = m_records.at(row);
+  const LogRecord &rec = m_records->at(row);
 
   switch (m_columnIds.value(column, LogColumnId::Unknown)) {
     case LogColumnId::EpochMs:
@@ -146,11 +149,11 @@ QVariant LogTableModel::headerData(int section, Qt::Orientation orientation,
   return section + 1;
 }
 
-void LogTableModel::setLog(const QVector<LogRecord> & records, const QStringList & headers, const QVector<LogColumnId> & columnIds)
+void LogTableModel::setLog(const QVector<LogRecord> * records, const QStringList & headers, const QVector<LogColumnId> & columnIds)
 {
   beginResetModel();
 
-  m_records.clear();
+  m_records = nullptr;
   m_headers.clear();
   m_columnIds.clear();
   m_rows = 0;
@@ -159,7 +162,7 @@ void LogTableModel::setLog(const QVector<LogRecord> & records, const QStringList
   m_records = records;
   m_headers = headers;
   m_columnIds = columnIds;
-  m_rows = m_records.size();
+  m_rows = m_records ? m_records->size() : 0;
   m_columns = m_headers.size();
 
   endResetModel();
@@ -168,7 +171,7 @@ void LogTableModel::setLog(const QVector<LogRecord> & records, const QStringList
 void LogTableModel::clear()
 {
   beginResetModel();
-  m_records.clear();
+  m_records = nullptr;
   m_headers.clear();
   m_columnIds.clear();
   m_rows = 0;
@@ -179,6 +182,9 @@ void LogTableModel::clear()
 QString LogTableModel::textAt(int row, int column) const
 {
   if (row < 0 || row >= m_rows || column < 0 || column >= m_columns)
+    return QString();
+
+  if (!m_records)
     return QString();
 
   const QVariant value = data(index(row, column), Qt::DisplayRole);

@@ -16,6 +16,15 @@
 
 #include "logtablemodel.h"
 
+namespace {
+
+QString formatDouble(double value)
+{
+  return QString::number(value, 'f', 3);
+}
+
+}
+
 LogTableModel::LogTableModel(QObject * parent) :
   QAbstractTableModel(parent)
 {
@@ -41,8 +50,85 @@ QVariant LogTableModel::data(const QModelIndex & index, int role) const
   if (row < 0 || row >= m_rows || column < 0 || column >= m_columns)
     return QVariant();
 
-  return m_cells[static_cast<size_t>(row) * static_cast<size_t>(m_columns) +
-                 static_cast<size_t>(column)];
+  if (column < 0 || column >= m_columns)
+    return QVariant();
+
+  const LogRecord &rec = m_records.at(row);
+
+  switch (m_columnIds.value(column, LogColumnId::Unknown)) {
+    case LogColumnId::EpochMs:
+      return rec.epochMs;
+    case LogColumnId::Date:
+      return rec.date.toString("yyyy-MM-dd");
+    case LogColumnId::Time:
+      return rec.time.toString("hh:mm:ss.zzz");
+    case LogColumnId::Rss1:
+      return rec.rss1;
+    case LogColumnId::RQly:
+      return rec.rqly;
+    case LogColumnId::RSNR:
+      return rec.rsnr;
+    case LogColumnId::RxBt:
+      return formatDouble(rec.rxBt);
+    case LogColumnId::Curr:
+      return formatDouble(rec.curr);
+    case LogColumnId::Capa:
+      return rec.capa;
+    case LogColumnId::Alt:
+      return formatDouble(rec.alt);
+    case LogColumnId::VSpd:
+      return formatDouble(rec.vspd);
+    case LogColumnId::GPS:
+      return rec.gps;
+    case LogColumnId::GAlt:
+      return formatDouble(rec.gAlt);
+    case LogColumnId::GSpd:
+      return formatDouble(rec.gSpd);
+    case LogColumnId::FM:
+      return rec.fm;
+    case LogColumnId::Rud:
+      return rec.rud;
+    case LogColumnId::Ele:
+      return rec.ele;
+    case LogColumnId::Thr:
+      return rec.thr;
+    case LogColumnId::Ail:
+      return rec.ail;
+    case LogColumnId::S1:
+      return rec.s1;
+    case LogColumnId::S2:
+      return rec.s2;
+    case LogColumnId::SA:
+      return rec.sa;
+    case LogColumnId::SB:
+      return rec.sb;
+    case LogColumnId::SC:
+      return rec.sc;
+    case LogColumnId::SD:
+      return rec.sd;
+    case LogColumnId::LSW:
+      return QString("0x%1").arg(rec.lsw, 16, 16, QChar('0')).toUpper();
+    case LogColumnId::CH1:
+      return rec.ch1;
+    case LogColumnId::CH2:
+      return rec.ch2;
+    case LogColumnId::CH3:
+      return rec.ch3;
+    case LogColumnId::CH4:
+      return rec.ch4;
+    case LogColumnId::CH5:
+      return rec.ch5;
+    case LogColumnId::CH6:
+      return rec.ch6;
+    case LogColumnId::CH7:
+      return rec.ch7;
+    case LogColumnId::CH8:
+      return rec.ch8;
+    case LogColumnId::TxBat:
+      return formatDouble(rec.txBat);
+    default:
+      return QVariant();
+  }
 }
 
 QVariant LogTableModel::headerData(int section, Qt::Orientation orientation,
@@ -52,38 +138,29 @@ QVariant LogTableModel::headerData(int section, Qt::Orientation orientation,
     return QVariant();
 
   if (orientation == Qt::Horizontal) {
-    if (section >= 0 && section < static_cast<int>(m_headers.size()))
-      return m_headers[static_cast<size_t>(section)];
+    if (section >= 0 && section < m_headers.size())
+      return m_headers.at(section);
     return QVariant();
   }
 
   return section + 1;
 }
 
-void LogTableModel::setLog(const QList<QStringList> & log)
+void LogTableModel::setLog(const QVector<LogRecord> & records, const QStringList & headers, const QVector<LogColumnId> & columnIds)
 {
   beginResetModel();
 
-  m_cells.clear();
+  m_records.clear();
   m_headers.clear();
+  m_columnIds.clear();
   m_rows = 0;
   m_columns = 0;
 
-  if (!log.isEmpty()) {
-    const QStringList & header = log.first();
-    m_columns = header.size();
-    m_rows = log.size() - 1;
-    m_headers.assign(header.begin(), header.end());
-
-    m_cells.reserve(static_cast<size_t>(m_rows) * static_cast<size_t>(m_columns));
-
-    for (int row = 1; row < log.size(); row++) {
-      const QStringList & values = log.at(row);
-      for (int column = 0; column < m_columns; column++) {
-        m_cells.push_back(column < values.size() ? values.at(column) : QString());
-      }
-    }
-  }
+  m_records = records;
+  m_headers = headers;
+  m_columnIds = columnIds;
+  m_rows = m_records.size();
+  m_columns = m_headers.size();
 
   endResetModel();
 }
@@ -91,8 +168,9 @@ void LogTableModel::setLog(const QList<QStringList> & log)
 void LogTableModel::clear()
 {
   beginResetModel();
-  m_cells.clear();
+  m_records.clear();
   m_headers.clear();
+  m_columnIds.clear();
   m_rows = 0;
   m_columns = 0;
   endResetModel();
@@ -103,6 +181,6 @@ QString LogTableModel::textAt(int row, int column) const
   if (row < 0 || row >= m_rows || column < 0 || column >= m_columns)
     return QString();
 
-  return m_cells[static_cast<size_t>(row) * static_cast<size_t>(m_columns) +
-                 static_cast<size_t>(column)];
+  const QVariant value = data(index(row, column), Qt::DisplayRole);
+  return value.toString();
 }

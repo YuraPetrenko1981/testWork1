@@ -34,6 +34,7 @@
 #include <QPushButton>
 #include "logsdialog.h"
 #include "logtablemodel.h"
+#include "logrecord.h"
 #include "appdata.h"
 #include "ui_logsdialog.h"
 #include "helpers.h"
@@ -42,6 +43,179 @@
 #else
 #include <unistd.h>
 #endif
+
+namespace {
+
+LogColumnId columnIdFromHeader(const QString & header)
+{
+  if (header == "Date") return LogColumnId::Date;
+  if (header == "Time") return LogColumnId::Time;
+  if (header == "1RSS(dB)") return LogColumnId::Rss1;
+  if (header == "RQly(%)") return LogColumnId::RQly;
+  if (header == "RSNR(dB)") return LogColumnId::RSNR;
+  if (header == "RxBt(V)") return LogColumnId::RxBt;
+  if (header == "Curr(A)") return LogColumnId::Curr;
+  if (header == "Capa(mAh)") return LogColumnId::Capa;
+  if (header == "Alt(m)") return LogColumnId::Alt;
+  if (header == "VSpd(m/s)") return LogColumnId::VSpd;
+  if (header == "GPS") return LogColumnId::GPS;
+  if (header == "GAlt" || header == "GAlt(m)") return LogColumnId::GAlt;
+  if (header == "GSpd" || header == "GSpd(kmh)") return LogColumnId::GSpd;
+  if (header == "FM") return LogColumnId::FM;
+  if (header == "Rud") return LogColumnId::Rud;
+  if (header == "Ele") return LogColumnId::Ele;
+  if (header == "Thr") return LogColumnId::Thr;
+  if (header == "Ail") return LogColumnId::Ail;
+  if (header == "S1") return LogColumnId::S1;
+  if (header == "S2") return LogColumnId::S2;
+  if (header == "SA") return LogColumnId::SA;
+  if (header == "SB") return LogColumnId::SB;
+  if (header == "SC") return LogColumnId::SC;
+  if (header == "SD") return LogColumnId::SD;
+  if (header == "LSW") return LogColumnId::LSW;
+  if (header == "CH1(us)") return LogColumnId::CH1;
+  if (header == "CH2(us)") return LogColumnId::CH2;
+  if (header == "CH3(us)") return LogColumnId::CH3;
+  if (header == "CH4(us)") return LogColumnId::CH4;
+  if (header == "CH5(us)") return LogColumnId::CH5;
+  if (header == "CH6(us)") return LogColumnId::CH6;
+  if (header == "CH7(us)") return LogColumnId::CH7;
+  if (header == "CH8(us)") return LogColumnId::CH8;
+  if (header == "TxBat(V)") return LogColumnId::TxBat;
+  return LogColumnId::Unknown;
+}
+
+bool parseHexU64(const QString & text, quint64 & value)
+{
+  QString trimmed = text.trimmed();
+  if (trimmed.startsWith("0x") || trimmed.startsWith("0X"))
+    trimmed = trimmed.mid(2);
+  bool ok = false;
+  value = trimmed.toULongLong(&ok, 16);
+  return ok;
+}
+
+bool parseInt(const QString & text, int & value)
+{
+  bool ok = false;
+  value = text.toInt(&ok);
+  return ok;
+}
+
+bool parseDouble(const QString & text, double & value)
+{
+  bool ok = false;
+  value = text.toDouble(&ok);
+  return ok;
+}
+
+bool numericFieldValue(const LogRecord & record, LogColumnId id, double & value)
+{
+  switch (id) {
+    case LogColumnId::EpochMs:
+      value = static_cast<double>(record.epochMs);
+      return true;
+    case LogColumnId::Rss1:
+      value = record.rss1;
+      return true;
+    case LogColumnId::RQly:
+      value = record.rqly;
+      return true;
+    case LogColumnId::RSNR:
+      value = record.rsnr;
+      return true;
+    case LogColumnId::RxBt:
+      value = record.rxBt;
+      return true;
+    case LogColumnId::Curr:
+      value = record.curr;
+      return true;
+    case LogColumnId::Capa:
+      value = record.capa;
+      return true;
+    case LogColumnId::Alt:
+      value = record.alt;
+      return true;
+    case LogColumnId::VSpd:
+      value = record.vspd;
+      return true;
+    case LogColumnId::GAlt:
+      value = record.gAlt;
+      return true;
+    case LogColumnId::GSpd:
+      value = record.gSpd;
+      return true;
+    case LogColumnId::Rud:
+      value = record.rud;
+      return true;
+    case LogColumnId::Ele:
+      value = record.ele;
+      return true;
+    case LogColumnId::Thr:
+      value = record.thr;
+      return true;
+    case LogColumnId::Ail:
+      value = record.ail;
+      return true;
+    case LogColumnId::S1:
+      value = record.s1;
+      return true;
+    case LogColumnId::S2:
+      value = record.s2;
+      return true;
+    case LogColumnId::SA:
+      value = record.sa;
+      return true;
+    case LogColumnId::SB:
+      value = record.sb;
+      return true;
+    case LogColumnId::SC:
+      value = record.sc;
+      return true;
+    case LogColumnId::SD:
+      value = record.sd;
+      return true;
+    case LogColumnId::LSW:
+      value = static_cast<double>(record.lsw);
+      return true;
+    case LogColumnId::CH1:
+      value = record.ch1;
+      return true;
+    case LogColumnId::CH2:
+      value = record.ch2;
+      return true;
+    case LogColumnId::CH3:
+      value = record.ch3;
+      return true;
+    case LogColumnId::CH4:
+      value = record.ch4;
+      return true;
+    case LogColumnId::CH5:
+      value = record.ch5;
+      return true;
+    case LogColumnId::CH6:
+      value = record.ch6;
+      return true;
+    case LogColumnId::CH7:
+      value = record.ch7;
+      return true;
+    case LogColumnId::CH8:
+      value = record.ch8;
+      return true;
+    case LogColumnId::TxBat:
+      value = record.txBat;
+      return true;
+    case LogColumnId::Date:
+    case LogColumnId::Time:
+    case LogColumnId::GPS:
+    case LogColumnId::FM:
+    case LogColumnId::Unknown:
+    default:
+      return false;
+  }
+}
+
+}
 
 class LogFileParserWorker : public QObject
 {
@@ -55,9 +229,9 @@ public:
 public slots:
   void parseFile(const QString & fileName)
   {
-    QList<QStringList> parsedLog;
-    int errors = 0;
-    int lines = -1;
+    LogParseResult result;
+    result.errors = 0;
+    result.lines = -1;
 
     QFile file(fileName);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -71,7 +245,8 @@ public slots:
 
     QByteArray firstLine = file.readLine();
     bytesRead += firstLine.size();
-    if (!QString::fromLatin1(firstLine).startsWith("Date,Time")) {
+    const QString firstLineText = QString::fromLatin1(firstLine).trimmed();
+    if (!firstLineText.startsWith("Date,Time")) {
       emit failed(tr("Invalid log file format"));
       return;
     }
@@ -96,33 +271,147 @@ public slots:
       }
 
       if (columns.count() == numfields) {
-        if (lines == -1) {
-          parsedLog.append(QStringList("MSecsSinceEpoch") << columns);
+        if (result.lines == -1) {
+          result.headers.clear();
+          result.headers.append("MSecsSinceEpoch");
+          result.headers.append(columns);
+          result.columnIds.clear();
+          result.columnIds.reserve(result.headers.size());
+          result.columnIds.append(LogColumnId::EpochMs);
+          for (const QString & header : columns) {
+            result.columnIds.append(columnIdFromHeader(header));
+          }
         } else {
-          QStringList sDate = columns.at(0).split("-");
-          QStringList sTime = columns.at(1).split(":");
-          QStringList sSecs;
+          LogRecord record;
+          bool ok = true;
 
-          if (sTime.count() == 3) {
-            sSecs = sTime.at(2).split(".");
+          record.date = QDate::fromString(columns.at(0), "yyyy-MM-dd");
+          record.time = QTime::fromString(columns.at(1), "hh:mm:ss.zzz");
+          if (!record.date.isValid() || !record.time.isValid())
+            ok = false;
 
-            if (sSecs.count() == 1)
-              sSecs.append("0");
+          if (ok) {
+            record.epochMs = QDateTime(record.date, record.time).toMSecsSinceEpoch();
           }
 
-          if (sDate.count() == 3 && sTime.count() == 3 && sSecs.count() == 2) {
-            QDate d(sDate.at(0).toInt(), sDate.at(1).toInt(), sDate.at(2).toInt());
-            QTime t(sTime.at(0).toInt(), sTime.at(1).toInt(), sSecs.at(0).toInt(), sSecs.at(1).toInt());
-            QDateTime dt(d, t);
-            parsedLog.append(QStringList(QString::number(dt.toMSecsSinceEpoch())) << columns);
+          for (int i = 2; i < columns.size(); ++i) {
+            const QString & value = columns.at(i);
+            switch (result.columnIds.at(i + 1)) {
+              case LogColumnId::Rss1:
+                ok = parseInt(value, record.rss1) && ok;
+                break;
+              case LogColumnId::RQly:
+                ok = parseInt(value, record.rqly) && ok;
+                break;
+              case LogColumnId::RSNR:
+                ok = parseInt(value, record.rsnr) && ok;
+                break;
+              case LogColumnId::RxBt:
+                ok = parseDouble(value, record.rxBt) && ok;
+                break;
+              case LogColumnId::Curr:
+                ok = parseDouble(value, record.curr) && ok;
+                break;
+              case LogColumnId::Capa:
+                ok = parseInt(value, record.capa) && ok;
+                break;
+              case LogColumnId::Alt:
+                ok = parseDouble(value, record.alt) && ok;
+                break;
+              case LogColumnId::VSpd:
+                ok = parseDouble(value, record.vspd) && ok;
+                break;
+              case LogColumnId::GPS:
+                record.gps = value;
+                break;
+              case LogColumnId::GAlt:
+                ok = parseDouble(value, record.gAlt) && ok;
+                break;
+              case LogColumnId::GSpd:
+                ok = parseDouble(value, record.gSpd) && ok;
+                break;
+              case LogColumnId::FM:
+                record.fm = value;
+                break;
+              case LogColumnId::Rud:
+                ok = parseInt(value, record.rud) && ok;
+                break;
+              case LogColumnId::Ele:
+                ok = parseInt(value, record.ele) && ok;
+                break;
+              case LogColumnId::Thr:
+                ok = parseInt(value, record.thr) && ok;
+                break;
+              case LogColumnId::Ail:
+                ok = parseInt(value, record.ail) && ok;
+                break;
+              case LogColumnId::S1:
+                ok = parseInt(value, record.s1) && ok;
+                break;
+              case LogColumnId::S2:
+                ok = parseInt(value, record.s2) && ok;
+                break;
+              case LogColumnId::SA:
+                ok = parseInt(value, record.sa) && ok;
+                break;
+              case LogColumnId::SB:
+                ok = parseInt(value, record.sb) && ok;
+                break;
+              case LogColumnId::SC:
+                ok = parseInt(value, record.sc) && ok;
+                break;
+              case LogColumnId::SD:
+                ok = parseInt(value, record.sd) && ok;
+                break;
+              case LogColumnId::LSW:
+                ok = parseHexU64(value, record.lsw) && ok;
+                break;
+              case LogColumnId::CH1:
+                ok = parseInt(value, record.ch1) && ok;
+                break;
+              case LogColumnId::CH2:
+                ok = parseInt(value, record.ch2) && ok;
+                break;
+              case LogColumnId::CH3:
+                ok = parseInt(value, record.ch3) && ok;
+                break;
+              case LogColumnId::CH4:
+                ok = parseInt(value, record.ch4) && ok;
+                break;
+              case LogColumnId::CH5:
+                ok = parseInt(value, record.ch5) && ok;
+                break;
+              case LogColumnId::CH6:
+                ok = parseInt(value, record.ch6) && ok;
+                break;
+              case LogColumnId::CH7:
+                ok = parseInt(value, record.ch7) && ok;
+                break;
+              case LogColumnId::CH8:
+                ok = parseInt(value, record.ch8) && ok;
+                break;
+              case LogColumnId::TxBat:
+                ok = parseDouble(value, record.txBat) && ok;
+                break;
+              case LogColumnId::Date:
+              case LogColumnId::Time:
+              case LogColumnId::EpochMs:
+              case LogColumnId::Unknown:
+              default:
+                break;
+            }
+          }
+
+          if (ok) {
+            result.records.append(record);
           } else {
-            errors++;
+            result.errors++;
           }
         }
       } else {
-        errors++;
+        result.errors++;
       }
-      lines++;
+      result.lines++;
 
       if (fileSize > 0) {
         int percent = static_cast<int>((bytesRead * 100) / fileSize);
@@ -134,12 +423,13 @@ public slots:
     }
 
     emit progress(100);
-    emit finished(parsedLog, errors, lines, QFileInfo(fileName).baseName());
+    result.baseName = QFileInfo(fileName).baseName();
+    emit finished(result);
   }
 
 signals:
   void progress(int percent);
-  void finished(const QList<QStringList> & parsedLog, int errors, int lines, const QString & baseName);
+  void finished(const LogParseResult & result);
   void failed(const QString & error);
   void canceled();
 
@@ -155,7 +445,6 @@ LogsDialog::LogsDialog(QWidget *parent) :
   cursorB(0),
   cursorLine(0)
 {
-  csvlog.clear();
 
   ui->setupUi(this);
   setWindowIcon(CompanionIcon("logs.png"));
@@ -386,38 +675,38 @@ void LogsDialog::selectionChanged()
   }
 }
 
-QList<QStringList> LogsDialog::filterGePoints(const QList<QStringList> & input)
+QVector<LogRecord> LogsDialog::filterGePoints(const QVector<LogRecord> & input) const
 {
-  QList<QStringList> result;
+  QVector<LogRecord> result;
 
   int n = input.count();
   if (n == 0) {
     return result;
   }
 
-  int gpscol = 0;
-  for (int i=1; i<input.at(0).count(); i++) {
-    if (input.at(0).at(i) == "GPS") {
-      gpscol=i;
+  bool hasGps = false;
+  for (LogColumnId id : m_columnIds) {
+    if (id == LogColumnId::GPS) {
+      hasGps = true;
+      break;
     }
   }
-  if (gpscol == 0) {
-    QMessageBox::critical(this, tr("Error: no GPS data found"),
+  if (!hasGps) {
+    QMessageBox::critical(const_cast<LogsDialog *>(this), tr("Error: no GPS data found"),
       tr("The column containing GPS coordinates must be named \"GPS\".\n\n\
 The columns for altitude \"GAlt\" and for speed \"GSpd\" are optional"));
     return result;
   }
 
-  result.append(input.at(0));
   bool rangeSelected = ui->logTable->selectionModel()->selectedRows().length() > 0;
 
   GpsGlitchFilter glitchFilter;
   GpsLatLonFilter latLonFilter;
 
-  for (int i = 1; i < n; i++) {
-    if ((ui->logTable->selectionModel()->isRowSelected(i - 1, QModelIndex()) && rangeSelected) || !rangeSelected) {
+  for (int i = 0; i < n; i++) {
+    if ((ui->logTable->selectionModel()->isRowSelected(i, QModelIndex()) && rangeSelected) || !rangeSelected) {
 
-      GpsCoord coord = extractGpsCoordinates(input.at(i).at(gpscol));
+      GpsCoord coord = extractGpsCoordinates(input.at(i).gps);
 
       // glitch filter
       if ( glitchFilter.isGlitch(coord) ) {
@@ -443,52 +732,18 @@ The columns for altitude \"GAlt\" and for speed \"GSpd\" are optional"));
 void LogsDialog::exportToGoogleEarth()
 {
   // filter data points
-  QList<QStringList> dataPoints = filterGePoints(csvlog);
+  QVector<LogRecord> dataPoints = filterGePoints(m_records);
   int n = dataPoints.count(); // number of points to export
   if (n == 0) return;
 
-  int gpscol = 0, altcol = 0, speedcol = 0, datecol = 0, timecol = 0;
   double altMultiplier = 1.0;
 
   QSet<int> extradataCols;
 
-  for (int i = 1; i < dataPoints.at(0).count(); i++) {
-    // Date and Time
-    // Long,Lat,Course,GPS Speed,GPS Alt
-    bool incExtraData = true;
-
-    if (dataPoints.at(0).at(i) == "Date") {
-      datecol=i;
-      incExtraData = false;
-    } else if (dataPoints.at(0).at(i) == "Time") {
-      timecol=i;
-      incExtraData = false;
-    } else if (dataPoints.at(0).at(i) == "GPS") {
-      gpscol=i;
-      incExtraData = false;
-    } else if (dataPoints.at(0).at(i).contains("GAlt")) {
-      altcol = i;
-      incExtraData = false;
-      if (dataPoints.at(0).at(i).contains("(ft)")) {
-        altMultiplier = 0.3048;    // feet to meters
-      }
-    } else if (dataPoints.at(0).at(i).contains("GSpd")) {
-      speedcol = i;
-      incExtraData = false;
+  for (int j = 0; j < ui->FieldsTW->rowCount(); j++) {
+    if (ui->FieldsTW->item(j, 0) && ui->FieldsTW->item(j, 0)->isSelected()) {
+      extradataCols << (j + 3);
     }
-
-    if (incExtraData) {
-      for (int j = 0; j < ui->FieldsTW->rowCount(); j++) {
-        if (ui->FieldsTW->item(j, 0) && ui->FieldsTW->item(j, 0)->isSelected() &&
-            ui->FieldsTW->item(j, 0)->data(Qt::DisplayRole).toString() == dataPoints.at(0).at(i)) {
-          extradataCols << i; // save data index not selection list index
-        }
-      }
-    }
-  }
-
-  if (gpscol == 0 ) {
-    return;
   }
 
   // qDebug() << "gpscol" << gpscol << "altcol" << altcol << "speedcol" << speedcol << "altMultiplier" << altMultiplier;
@@ -522,7 +777,7 @@ void LogsDialog::exportToGoogleEarth()
 
   // declare additional fields
   for (auto i = extradataCols.cbegin(), end = extradataCols.cend(); i != end; ++i) {
-    QString origName = dataPoints.at(0).at(*i);
+    QString origName = m_headers.at(*i);
     QString safeName = origName;
     safeName.replace(" ","_");
     outputStream << "\t\t\t<gx:SimpleArrayField name=\""<< safeName <<"\" ";
@@ -544,8 +799,9 @@ void LogsDialog::exportToGoogleEarth()
   outputStream << "\n\t\t\t\t\t<altitudeMode>absolute</altitudeMode>\n";
 
   // date and time data points
-  for (int i = 1; i < n; i++) {
-    QString tstamp = dataPoints.at(i).at(datecol) + QString("T") + dataPoints.at(i).at(timecol) + QString("Z");
+  for (int i = 0; i < n; i++) {
+    QString tstamp = dataPoints.at(i).date.toString("yyyy-MM-dd") +
+      QString("T") + dataPoints.at(i).time.toString("hh:mm:ss.zzz") + QString("Z");
     outputStream << "\t\t\t\t\t<when>"<< tstamp <<"</when>\n";
   }
 
@@ -553,33 +809,30 @@ void LogsDialog::exportToGoogleEarth()
   outputStream.setRealNumberNotation(QTextStream::FixedNotation);
   outputStream.setRealNumberPrecision(8);
 
-  for (int i = 1; i < n; i++) {
-    GpsCoord coord = extractGpsCoordinates(dataPoints.at(i).at(gpscol));
-    int altitude = altcol ? (dataPoints.at(i).at(altcol).toFloat() * altMultiplier) : 0;
+  for (int i = 0; i < n; i++) {
+    GpsCoord coord = extractGpsCoordinates(dataPoints.at(i).gps);
+    int altitude = static_cast<int>(dataPoints.at(i).gAlt * altMultiplier);
     outputStream << "\t\t\t\t\t<gx:coord>" << coord.longitude << " " << coord.latitude << " " << altitude << " </gx:coord>\n" ;
   }
 
   // additional data for data points
   outputStream << "\t\t\t\t\t<ExtendedData>\n\t\t\t\t\t\t<SchemaData schemaUrl=\"#schema\">\n";
 
-  if (speedcol) {
-    // gps speed data points
-    outputStream << "\t\t\t\t\t\t\t<gx:SimpleArrayData name=\"GPSSpeed\">\n";
-
-    for (int i = 1; i < n; i++) {
-      outputStream << "\t\t\t\t\t\t\t\t<gx:value>"<< dataPoints.at(i).at(speedcol) <<"</gx:value>\n";
-    }
-    outputStream << "\t\t\t\t\t\t\t</gx:SimpleArrayData>\n";
+  // gps speed data points
+  outputStream << "\t\t\t\t\t\t\t<gx:SimpleArrayData name=\"GPSSpeed\">\n";
+  for (int i = 0; i < n; i++) {
+    outputStream << "\t\t\t\t\t\t\t\t<gx:value>"<< dataPoints.at(i).gSpd <<"</gx:value>\n";
   }
+  outputStream << "\t\t\t\t\t\t\t</gx:SimpleArrayData>\n";
 
   // add values for additional fields
   for (auto i = extradataCols.cbegin(), end = extradataCols.cend(); i != end; ++i) {
-    QString safeName = dataPoints.at(0).at(*i);
+    QString safeName = m_headers.at(*i);
     safeName.replace(" ","_");
     outputStream << "\t\t\t\t\t\t\t<gx:SimpleArrayData name=\""<< safeName <<"\">\n";
 
-    for (int j = 1; j < n; j++) {
-      outputStream << "\t\t\t\t\t\t\t\t<gx:value>"<< dataPoints.at(j).at(*i) <<"</gx:value>\n";
+    for (int j = 0; j < n; j++) {
+      outputStream << "\t\t\t\t\t\t\t\t<gx:value>"<< m_logModel->textAt(j, *i) <<"</gx:value>\n";
     }
 
     outputStream << "\t\t\t\t\t\t\t</gx:SimpleArrayData>\n";
@@ -816,11 +1069,11 @@ void LogsDialog::onParseProgress(int percent)
   ui->parseProgressBar->setValue(percent);
 }
 
-void LogsDialog::onParseFinished(const QList<QStringList> & parsedLog, int errors, int lines, const QString & baseName)
+void LogsDialog::onParseFinished(const LogParseResult & result)
 {
   stopParseWorker();
   finishParseUiState();
-  applyParsedLog(parsedLog, errors, lines, baseName);
+  applyParsedLog(result);
 }
 
 void LogsDialog::onParseFailed(const QString & error)
@@ -840,12 +1093,14 @@ void LogsDialog::onParseCanceled()
   m_tableModelReady = false;
 }
 
-void LogsDialog::applyParsedLog(const QList<QStringList> & parsedLog, int errors, int lines, const QString & baseName)
+void LogsDialog::applyParsedLog(const LogParseResult & result)
 {
-  csvlog = parsedLog;
-  logFilename = baseName;
+  m_records = result.records;
+  m_headers = result.headers;
+  m_columnIds = result.columnIds;
+  logFilename = result.baseName;
 
-  if (csvlog.count() <= 1) {
+  if (m_records.isEmpty() || m_headers.isEmpty()) {
     m_loadTimingActive = false;
     m_tableModelReady = false;
     return;
@@ -855,18 +1110,18 @@ void LogsDialog::applyParsedLog(const QList<QStringList> & parsedLog, int errors
   m_logModel->clear();
   ui->FieldsTW->setShowGrid(false);
   ui->FieldsTW->setContentsMargins(0, 0, 0, 0);
-  ui->FieldsTW->setRowCount(csvlog.at(0).count() - 2);
+  ui->FieldsTW->setRowCount(m_headers.count() - 2);
   ui->FieldsTW->setColumnCount(1);
   ui->FieldsTW->setHorizontalHeaderLabels(QStringList(tr("Available fields")));
   ui->logTable->setSelectionBehavior(QAbstractItemView::SelectRows);
 
-  for (int i = 3; i < csvlog.at(0).count(); i++) {
-    QTableWidgetItem* item= new QTableWidgetItem(csvlog.at(0).at(i));
+  for (int i = 3; i < m_headers.count(); i++) {
+    QTableWidgetItem* item= new QTableWidgetItem(m_headers.at(i));
     ui->FieldsTW->setItem(i - 3, 0, item);
   }
 
   ui->FieldsTW->resizeRowsToContents();
-  m_logModel->setLog(csvlog);
+  m_logModel->setLog(m_records, m_headers, m_columnIds);
 
   ui->logTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
   QVarLengthArray<int> sizes;
@@ -878,15 +1133,15 @@ void LogsDialog::applyParsedLog(const QList<QStringList> & parsedLog, int errors
   ui->logTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
 
   for (int i = 0; i < m_logModel->columnCount(); i++) {
-    if (i == 0)
+    if (i == static_cast<int>(LogColumnId::EpochMs))
       ui->logTable->setColumnHidden(i, true); // hide MSecsSinceEpoch column
     else
       ui->logTable->setColumnWidth(i, sizes.at(i));
   }
 
-  if (errors > 1) {
+  if (result.errors > 1) {
     QMessageBox::warning(this, CPN_STR_APP_NAME,
-        tr("The selected logfile contains %1 invalid lines out of  %2 total lines").arg(errors).arg(lines));
+        tr("The selected logfile contains %1 invalid lines out of  %2 total lines").arg(result.errors).arg(result.lines));
   }
 
   plotLock = true;
@@ -941,8 +1196,8 @@ void LogsDialog::writeLoadTiming(double dtMs, const char * status) const
       << "utc_ms=" << wallMs
       << " dt_ms=" << dtMs
       << " status=" << status
-      << " rows=" << (csvlog.size() > 1 ? csvlog.size() - 1 : 0)
-      << " cols=" << (csvlog.isEmpty() ? 0 : csvlog.first().size())
+      << " rows=" << m_records.size()
+      << " cols=" << m_headers.size()
       << " file=" << m_timingFile.toUtf8().constData()
       << '\n';
   out.flush();
@@ -953,14 +1208,12 @@ void LogsDialog::saveSession()
   int index = ui->sessions_CB->currentIndex();
   // ignore index 0 is its all sessions combined
   if(index > 0) {
-    int n = csvlog.count();
-    QList<QStringList> sessionCsvLog;
-    // add CSV headers from first row of source file
-    sessionCsvLog.push_back(csvlog[0]);
+    int n = m_records.count();
+    QVector<LogRecord> sessionRecords;
     // find session breaks
     int currentSession = 0;
     QDateTime lastvalue;
-    for (int i = 1; i < n; i++) {
+    for (int i = 0; i < n; i++) {
       QDateTime tmp = getRecordTimeStamp(i);
       if (!lastvalue.isValid() || lastvalue.secsTo(tmp) > 60) {
         currentSession++;
@@ -968,7 +1221,7 @@ void LogsDialog::saveSession()
       lastvalue = tmp;
       if(currentSession == index) {
         // add records to filtered list
-        sessionCsvLog.push_back(csvlog[i]);
+        sessionRecords.append(m_records.at(i));
       }
       else if (currentSession > index) {
         break;
@@ -981,112 +1234,52 @@ void LogsDialog::saveSession()
     QFile data(filename);
     if(data.open(QFile::WriteOnly |QFile::Truncate)) {
       QTextStream output(&data);
-      int numRecords = sessionCsvLog.count();
-      for(int i = 0; i < numRecords; i++){
-        output << sessionCsvLog[i].join(",") << '\n';
+      output << m_headers.join(",") << '\n';
+      for (const LogRecord &rec : sessionRecords) {
+        QStringList row;
+        row.reserve(m_headers.size());
+        row << QString::number(rec.epochMs);
+        row << rec.date.toString("yyyy-MM-dd");
+        row << rec.time.toString("hh:mm:ss.zzz");
+        row << QString::number(rec.rss1);
+        row << QString::number(rec.rqly);
+        row << QString::number(rec.rsnr);
+        row << QString::number(rec.rxBt);
+        row << QString::number(rec.curr);
+        row << QString::number(rec.capa);
+        row << QString::number(rec.alt);
+        row << QString::number(rec.vspd);
+        row << rec.fm;
+        row << QString::number(rec.rud);
+        row << QString::number(rec.ele);
+        row << QString::number(rec.thr);
+        row << QString::number(rec.ail);
+        row << QString::number(rec.s1);
+        row << QString::number(rec.s2);
+        row << QString::number(rec.sa);
+        row << QString::number(rec.sb);
+        row << QString::number(rec.sc);
+        row << QString::number(rec.sd);
+        row << QString("0x%1").arg(rec.lsw, 16, 16, QChar('0')).toUpper();
+        row << QString::number(rec.ch1);
+        row << QString::number(rec.ch2);
+        row << QString::number(rec.ch3);
+        row << QString::number(rec.ch4);
+        row << QString::number(rec.ch5);
+        row << QString::number(rec.ch6);
+        row << QString::number(rec.ch7);
+        row << QString::number(rec.ch8);
+        row << QString::number(rec.txBat);
+        output << row.join(",") << '\n';
       }
     }
-    sessionCsvLog.clear();
+    sessionRecords.clear();
   }
 }
 
 bool LogsDialog::cvsFileParse()
 {
-  //Stopwatch s("Parse");
-
-  QFile file(ui->FileName_LE->text());
-  int errors=0;
-  int lines=-1;
-
-  m_timingFile = file.fileName();
-  const auto tOpenStart = std::chrono::steady_clock::now();
-
-  if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) { // reading HEX TEXT file
-    return false;
-  }
-  else {
-    // Include the QFile::open() call itself in the measured interval.
-    m_loadStart = tOpenStart;
-    m_loadTimingActive = true;
-    m_tableModelReady = false;
-
-    csvlog.clear();
-    logFilename.clear();
-    QTextStream inputStream(&file);
-    QString buffer = file.readLine();
-
-    if (buffer.startsWith("Date,Time")) {
-      file.reset();
-    }
-    else {
-      return false;
-    }
-
-    int numfields=-1;
-    while (!file.atEnd()) {
-      QString line = file.readLine().trimmed();
-      QStringList columns = line.split(',');
-
-      if (numfields == -1) {
-        numfields=columns.count();
-      }
-
-      if (columns.count() == numfields) {
-        if (lines == -1) {
-          csvlog.append(QStringList("MSecsSinceEpoch") << columns);
-        } else {
-          // Qt v6.2 onwards QDateTime::fromString() is very slow
-          QStringList sDate = columns.at(0).split("-");
-          QStringList sTime = columns.at(1).split(":");
-          QStringList sSecs;
-
-          if (sTime.count() == 3) {
-            sSecs = sTime.at(2).split(".");
-
-            if (sSecs.count() == 1)
-              sSecs.append("0");
-          }
-
-          if (sDate.count() == 3 && sTime.count() == 3 && sSecs.count() == 2) {
-            QDate d(sDate.at(0).toInt(), sDate.at(1).toInt(), sDate.at(2).toInt());
-            QTime t(sTime.at(0).toInt(), sTime.at(1).toInt(), sSecs.at(0).toInt(), sSecs.at(1).toInt());
-            QDateTime dt(d, t);
-            //qDebug() << dt << dt.toString() << dt.toMSecsSinceEpoch() << QDateTime::fromMSecsSinceEpoch(dt.toMSecsSinceEpoch());
-            csvlog.append(QStringList(QString::number(dt.toMSecsSinceEpoch())) << columns);
-            //qDebug() << csvlog.at(csvlog.count() - 1);
-          } else {
-            errors++;
-          }
-        }
-      } else {
-        errors++;
-      }
-      lines++;
-    }
-
-    logFilename = QFileInfo(file.fileName()).baseName();
-  }
-
-  file.close();
-  if (errors > 1) {
-    QMessageBox::warning(this, CPN_STR_APP_NAME, tr("The selected logfile contains %1 invalid lines out of  %2 total lines").arg(errors).arg(lines));
-  }
-
-  int n = csvlog.count();
-  if (n == 1) {
-    csvlog.clear();
-    return false;
-  }
-
-  //s.report("Data loaded");
-
-  plotLock = true;
-  setFlightSessions();
-  plotLock = false;
-
-  //s.report("Sessions loaded");
-
-  return true;
+  return false;
 }
 
 struct FlightSession {
@@ -1096,8 +1289,9 @@ struct FlightSession {
 
 QDateTime LogsDialog::getRecordTimeStamp(int index)
 {
-  //qDebug() << csvlog.at(index).at(0).toLongLong() << QDateTime::fromMSecsSinceEpoch(csvlog.at(index).at(0).toLongLong());
-  return QDateTime::fromMSecsSinceEpoch(csvlog.at(index).at(0).toLongLong());
+  if (index < 0 || index >= m_records.size())
+    return QDateTime();
+  return QDateTime::fromMSecsSinceEpoch(m_records.at(index).epochMs);
 }
 
 QString LogsDialog::generateDuration(const QDateTime & start, const QDateTime & end)
@@ -1119,7 +1313,7 @@ void LogsDialog::setFlightSessions()
   ui->sessions_CB->clear();
   ui->SaveSession_PB->setEnabled(false);
 
-  int n = csvlog.count();
+  int n = m_records.count();
   // qDebug() << "records" << n;
 
   // find session breaks
@@ -1210,15 +1404,16 @@ std::pair<double, double> LogsDialog::GetMinMaxY() const
 
   // iterate over selected fields and rows to compute global min/max Y
   for (QTableWidgetItem *fieldItem : ui->FieldsTW->selectedItems()) {
-    const int col = fieldItem->row() + 2;  // Date and Time are first two columns
+    const int col = fieldItem->row() + 3;  // Epoch, Date and Time first
+    const LogColumnId columnId = m_columnIds.value(col, LogColumnId::Unknown);
     const int rows = hasSelection ? selectedRows.length() : m_logModel->rowCount();
 
     for (int r = 0; r < rows; ++r) {
       const int tableRow = hasSelection ? selectedRows.at(r) : r;
 
-      bool ok = false;
-      const double v = m_logModel->textAt(tableRow, col).toDouble(&ok);
-      if (!ok) continue;
+      double v = 0.0;
+      if (!numericFieldValue(m_records.at(tableRow), columnId, v))
+        continue;
 
       if (!found) {
         minVal = maxVal = v;
@@ -1271,25 +1466,34 @@ void LogsDialog::plotLogs()
   foreach (QTableWidgetItem *plot, ui->FieldsTW->selectedItems()) {
     coords_t plotCoords;
     int plotColumn = plot->row() + 3; // Epoch, Date and Time first
+    const LogColumnId columnId = m_columnIds.value(plotColumn, LogColumnId::Unknown);
 
     plotCoords.min_y = INVALID_MIN;
     plotCoords.max_y = INVALID_MAX;
     plotCoords.yaxis = firstLeft;
     plotCoords.name = plot->text();
+    bool hasY = false;
 
     for (int row = 0; row < rowCount; row++) {
-      double y;
+      double y = 0.0;
       double time;
       QDateTime datetime;
 
       const int tableRow = hasLogSelection ? selectedRows.at(row) : row;
 
-      y = m_logModel->textAt(tableRow, plotColumn).toDouble();
-      datetime = QDateTime::fromMSecsSinceEpoch(m_logModel->textAt(tableRow, 0).toLongLong());
+      if (!numericFieldValue(m_records.at(tableRow), columnId, y))
+        continue;
+      datetime = QDateTime::fromMSecsSinceEpoch(m_records.at(tableRow).epochMs);
       plotCoords.y.push_back(y);
 
-      if (plotCoords.min_y > y) plotCoords.min_y = y;
-      if (plotCoords.max_y < y) plotCoords.max_y = y;
+      if (!hasY) {
+        plotCoords.min_y = y;
+        plotCoords.max_y = y;
+        hasY = true;
+      } else {
+        if (plotCoords.min_y > y) plotCoords.min_y = y;
+        if (plotCoords.max_y < y) plotCoords.max_y = y;
+      }
 
       time = QCPAxisTickerDateTime::dateTimeToKey(datetime);
 
@@ -1303,6 +1507,9 @@ void LogsDialog::plotLogs()
       if (plots.max_x < time) plots.max_x = time;
     }
 
+    if (!hasY)
+      continue;
+
     double range_inc = (plotCoords.max_y - plotCoords.min_y) / 100;
     if (range_inc == 0) range_inc = 1;
     plotCoords.max_y += range_inc;
@@ -1312,6 +1519,11 @@ void LogsDialog::plotLogs()
   }
 
   //s.report("Cords");
+
+  if (plots.coords.isEmpty()) {
+    removeAllGraphs();
+    return;
+  }
 
   yAxesRanges[firstLeft].min = plots.coords.at(0).min_y;
   yAxesRanges[firstLeft].max = plots.coords.at(0).max_y;

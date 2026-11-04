@@ -26,6 +26,7 @@
 #include <QThread>
 #include <chrono>
 #include "qcustomplot.h"
+#include "logrecord.h"
 
 #define INVALID_MIN 999999
 #define INVALID_MAX -999999
@@ -92,12 +93,14 @@ private slots:
   void yAxisChangeRanges(QCPRange range);
   std::pair<double, double> GetMinMaxY() const;
   void onParseProgress(int percent);
-  void onParseFinished(const QList<QStringList> & parsedLog, int errors, int lines, const QString & baseName);
+  void onParseFinished(const LogParseResult & result);
   void onParseFailed(const QString & error);
   void onParseCanceled();
 
 private:
-  QList<QStringList> csvlog;
+  QVector<LogRecord> m_records;
+  QStringList m_headers;
+  QVector<LogColumnId> m_columnIds;
   Ui::LogsDialog *ui;
   LogTableModel * m_logModel = nullptr;
   QCPAxisRect *axisRect;
@@ -128,8 +131,8 @@ private:
   void stopParseWorker();
   void setParseUiState(bool active);
   void finishParseUiState();
-  void applyParsedLog(const QList<QStringList> & parsedLog, int errors, int lines, const QString & baseName);
-  QList<QStringList> filterGePoints(const QList<QStringList> & input);
+  void applyParsedLog(const LogParseResult & result);
+  QVector<LogRecord> filterGePoints(const QVector<LogRecord> & input) const;
   void exportToGoogleEarth();
   QDateTime getRecordTimeStamp(int index);
   QString generateDuration(const QDateTime & start, const QDateTime & end);

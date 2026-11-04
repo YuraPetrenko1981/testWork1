@@ -17,6 +17,7 @@
 #pragma once
 
 #include <QAbstractTableModel>
+#include "logrecord.h"
 #include <QStringList>
 #include <vector>
 
@@ -33,14 +34,15 @@ public:
   QVariant headerData(int section, Qt::Orientation orientation,
                       int role = Qt::DisplayRole) const override;
 
-  void setLog(const QList<QStringList> & log);
+  void setLog(const QVector<LogRecord> & records, const QStringList & headers, const QVector<LogColumnId> & columnIds);
   void clear();
 
   QString textAt(int row, int column) const;
 
 private:
-  std::vector<QString> m_cells;
-  std::vector<QString> m_headers;
+  QVector<LogRecord> m_records;
+  QStringList m_headers;
+  QVector<LogColumnId> m_columnIds;
   int m_rows = 0;
   int m_columns = 0;
 };

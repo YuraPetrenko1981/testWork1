@@ -20,6 +20,7 @@
  */
 
 #include <math.h>
+#include <cmath>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -114,6 +115,13 @@ bool parseDouble(const QString & text, double & value)
 QString formatDouble(double value)
 {
   return QString::number(value, 'f', 3);
+}
+
+QString formatStatValue(double value, bool isInt)
+{
+  if (isInt)
+    return QString::number(static_cast<qint64>(std::llround(value)));
+  return formatDouble(value);
 }
 
 bool numericFieldValue(const LogRecord & record, LogColumnId id, double & value)
@@ -218,6 +226,53 @@ bool numericFieldValue(const LogRecord & record, LogColumnId id, double & value)
     case LogColumnId::TxBat:
       value = record.txBat;
       return true;
+    case LogColumnId::Date:
+    case LogColumnId::Time:
+    case LogColumnId::GPS:
+    case LogColumnId::FM:
+    case LogColumnId::Unknown:
+    default:
+      return false;
+  }
+}
+
+bool isIntegerField(LogColumnId id)
+{
+  switch (id) {
+    case LogColumnId::EpochMs:
+    case LogColumnId::Rss1:
+    case LogColumnId::RQly:
+    case LogColumnId::RSNR:
+    case LogColumnId::Capa:
+    case LogColumnId::Rud:
+    case LogColumnId::Ele:
+    case LogColumnId::Thr:
+    case LogColumnId::Ail:
+    case LogColumnId::S1:
+    case LogColumnId::S2:
+    case LogColumnId::SA:
+    case LogColumnId::SB:
+    case LogColumnId::SC:
+    case LogColumnId::SD:
+    case LogColumnId::CH1:
+    case LogColumnId::CH2:
+    case LogColumnId::CH3:
+    case LogColumnId::CH4:
+    case LogColumnId::CH5:
+    case LogColumnId::CH6:
+    case LogColumnId::CH7:
+    case LogColumnId::CH8:
+    case LogColumnId::Hdg:
+    case LogColumnId::Sats:
+      return true;
+    case LogColumnId::LSW:
+    case LogColumnId::RxBt:
+    case LogColumnId::Curr:
+    case LogColumnId::Alt:
+    case LogColumnId::VSpd:
+    case LogColumnId::GAlt:
+    case LogColumnId::GSpd:
+    case LogColumnId::TxBat:
     case LogColumnId::Date:
     case LogColumnId::Time:
     case LogColumnId::GPS:
@@ -556,6 +611,7 @@ LogsDialog::LogsDialog(QWidget *parent) :
   connect(ui->FieldsTW, &QTableWidget::itemSelectionChanged, this, &LogsDialog::plotLogs);
   connect(ui->logTable->selectionModel(), &QItemSelectionModel::selectionChanged,
           this, &LogsDialog::plotLogs);
+  connect(axisRect->axis(QCPAxis::atBottom), static_cast<void(QCPAxis::*)(const QCPRange&)>(&QCPAxis::rangeChanged), this, &LogsDialog::updateStatsPanel);
   connect(ui->Reset_PB, &QPushButton::clicked, this, [this]() {
     ui->ZoomX_ChkB->setChecked(false);
     ui->ZoomY_ChkB->setChecked(false);
@@ -1553,6 +1609,7 @@ void LogsDialog::plotLogs()
 
   if (!ui->FieldsTW->selectedItems().length()) {
     removeAllGraphs();
+    updateStatsPanel();
     return;
   }
 
@@ -1640,6 +1697,7 @@ void LogsDialog::plotLogs()
 
   if (plots.coords.isEmpty()) {
     removeAllGraphs();
+    updateStatsPanel();
     return;
   }
 
@@ -1830,8 +1888,84 @@ void LogsDialog::plotLogs()
 
   ui->customPlot->legend->setVisible(true);
   ui->customPlot->replot();
+  updateStatsPanel();
 
   //s.report("Refresh graph");
+}
+
+void LogsDialog::updateStatsPanel()
+{
+  if (!ui->statsLabel)
+    return;
+
+  if (m_records.isEmpty() || m_columnIds.isEmpty()) {
+    ui->statsLabel->setText(QString());
+    return;
+  }
+
+  const QCPRange range = axisRect->axis(QCPAxis::atBottom)->range();
+  const double minKey = range.lower;
+  const double maxKey = range.upper;
+
+  QStringList lines;
+
+  QModelIndexList selection = ui->logTable->selectionModel()->selectedRows();
+  QVarLengthArray<int> selectedRows;
+  if (!selection.isEmpty()) {
+    selectedRows.reserve(selection.size());
+    for (const QModelIndex &idx : selection)
+      selectedRows.append(idx.row());
+  }
+
+  for (QTableWidgetItem *fieldItem : ui->FieldsTW->selectedItems()) {
+    const int col = fieldItem->row() + 3; // Epoch, Date and Time first
+    const LogColumnId columnId = m_columnIds.value(col, LogColumnId::Unknown);
+    if (columnId == LogColumnId::Unknown)
+      continue;
+
+    double minVal = 0.0;
+    double maxVal = 0.0;
+    double sumVal = 0.0;
+    int count = 0;
+
+    const int rowCount = selectedRows.isEmpty() ? m_records.size() : selectedRows.size();
+    for (int i = 0; i < rowCount; ++i) {
+      const int row = selectedRows.isEmpty() ? i : selectedRows.at(i);
+      const LogRecord &rec = m_records.at(row);
+      const double key = QCPAxisTickerDateTime::dateTimeToKey(QDateTime::fromMSecsSinceEpoch(rec.epochMs));
+      if (key < minKey || key > maxKey)
+        continue;
+
+      double v = 0.0;
+      if (!numericFieldValue(rec, columnId, v))
+        continue;
+
+      if (count == 0) {
+        minVal = v;
+        maxVal = v;
+      } else {
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+      sumVal += v;
+      ++count;
+    }
+
+    if (count == 0) {
+      lines << QString("%1: n/a").arg(fieldItem->text());
+      continue;
+    }
+
+    const double avg = sumVal / count;
+    const bool isInt = isIntegerField(columnId);
+    lines << QString("%1: min=%2 max=%3 avg=%4")
+      .arg(fieldItem->text())
+      .arg(formatStatValue(minVal, isInt))
+      .arg(formatStatValue(maxVal, isInt))
+      .arg(formatStatValue(avg, isInt));
+  }
+
+  ui->statsLabel->setText(lines.join("\n"));
 }
 
 void LogsDialog::yAxisChangeRanges(QCPRange range)

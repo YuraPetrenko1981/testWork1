@@ -145,6 +145,7 @@ private:
   void placeCursor(double x, bool second);
   QString formatTimeDelta(double timeDelta);
   void updateCursorsLabel();
+  void updateStatsPanel();
 
   QThread * m_parseThread = nullptr;
   LogFileParserWorker * m_parseWorker = nullptr;
